@@ -1,0 +1,30 @@
+# Docker Compose for Minecraft RCON Integration Tests
+# This file is used by GitHub Actions for integration testing
+
+services:
+  minecraft:
+    image: papermc/paper:1.21.8
+    container_name: cavarest-rcon-minecraft
+    ports:
+      - "25565:25565"   # Minecraft server port
+      - "25575:25575"   # RCON port
+    environment:
+      - EULA=TRUE
+      - ONLINE_MODE=false
+      - SERVER_PORT=25565
+      - RCON_PORT=25575
+      - RCON_PASSWORD=cavarest
+      - MAX_PLAYERS=5
+      - MEMORY=512M
+    volumes:
+      - minecraft-data:/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'list' | nc -w 3 localhost 25575 | grep -q 'Connected' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 120s
+    stop_grace_period: 30s
+
+volumes:
+  minecraft-data:

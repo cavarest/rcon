@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+gradle/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test reports
+build/reports/
+build/test-results/

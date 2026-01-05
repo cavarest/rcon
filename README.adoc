@@ -1,0 +1,273 @@
+= Cavarest RCON Library
+
+image:https://img.shields.io/badge/Java-11%2B-blue[Java Version]
+image:https://img.shields.io/badge/Gradle-8.5-green[Gradle Version]
+image:https://img.shields.io/badge/License-MIT-yellow[License]
+
+A Java library for communicating with Minecraft servers using the RCON (Remote
+Console) protocol. This library provides a simple and efficient API for sending
+commands to Minecraft servers and receiving responses.
+
+== Purpose
+
+The Cavarest RCON library allows developers to integrate RCON functionality into
+their Java applications for:
+
+* Server administration and automation
+* Server monitoring and alerting
+* Plugin administration interfaces
+* Multi-server management dashboards
+* Automated server maintenance scripts
+
+== Features
+
+* Lightweight and efficient implementation
+* Full support for RCON protocol (Source RCON)
+* Easy-to-use high-level API via `RconClient`
+* Low-level API via `Rcon` class for advanced use cases
+* Proper handling of RCON packets and responses
+* Support for character encoding (UTF-8, ISO-8859-1 for color codes)
+* Thread-safe design for concurrent usage
+* Comprehensive test suite with unit and integration tests
+
+== Architecture
+
+=== Source Code Structure
+
+----
+src/main/java/org/cavarest/rcon/
+├── Packet.java           # Domain model for RCON protocol packets
+├── PacketType.java       # Protocol constants (packet types)
+├── PacketCodec.java      # Binary encoding/decoding of packets
+├── PacketReader.java     # Low-level packet reading from socket
+├── PacketWriter.java     # Low-level packet writing to socket
+├── Rcon.java             # Core RCON client with builder pattern
+└── RconClient.java       # High-level simplified API
+----
+
+=== Component Relationships
+
+----
+                    ┌──────────────────┐
+                    │   RconClient     │  ← Entry point for users
+                    │  (High-level)    │
+                    └────────┬─────────┘
+                             │
+                    ┌────────▼─────────┐
+                    │      Rcon        │  ← Core client
+                    │  (Builder Pattern)│
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+     ┌────────▼─────┐ ┌──────▼─────┐ ┌─────▼──────┐
+     │ PacketReader │ │PacketWriter│ │ Request ID │
+     │              │ │            │ │ Management │
+     └──────┬───────┘ └─────┬──────┘ └────────────┘
+            │               │
+     ┌──────▼───────┐ ┌─────▼──────┐
+     │ PacketCodec  │ │  ByteBuf   │
+     │ (Encoding)   │ │ Management │
+     └──────┬───────┘ └────────────┘
+            │
+     ┌──────▼───────┐
+     │   Packet     │  ← Immutable domain model
+     │   PacketType │  ← Constants
+     └──────────────┘
+----
+
+== Installation
+
+=== Using Gradle
+
+[source,groovy]
+----
+dependencies {
+    implementation 'org.cavarest:cavarest-rcon:0.1.0'
+}
+----
+
+=== Building from Source
+
+[source,shell]
+----
+./gradlew build
+----
+
+The JAR file will be generated at `build/libs/cavarest-rcon-0.1.0.jar`.
+
+=== Requirements
+
+* Java 11 or higher
+* Gradle 8.5 (wrapper included)
+
+== Usage
+
+=== Quick Start
+
+[source,java]
+----
+import org.cavarest.rcon.RconClient;
+import java.io.IOException;
+
+try (RconClient client = new RconClient("localhost", 25575, "password")) {
+    client.connect();
+    String response = client.sendCommand("say Hello from RCON!");
+    System.out.println("Response: " + response);
+} catch (IOException e) {
+    System.err.println("RCON error: " + e.getMessage());
+}
+----
+
+=== Using the Low-Level API
+
+[source,java]
+----
+import org.cavarest.rcon.Rcon;
+import java.io.IOException;
+
+try (Rcon rcon = Rcon.connect("localhost", 25575)) {
+    if (rcon.authenticate("password")) {
+        String response = rcon.sendCommand("list");
+        System.out.println("Players: " + response);
+    }
+} catch (IOException e) {
+    System.err.println("RCON error: " + e.getMessage());
+}
+----
+
+=== Builder Pattern
+
+[source,java]
+----
+import org.cavarest.rcon.Rcon;
+import java.nio.charset.StandardCharsets;
+
+Rcon rcon = Rcon.newBuilder()
+    .withChannel(channel)
+    .withReadBufferCapacity(8192)
+    .withWriteBufferCapacity(4096)
+    .withCharset(StandardCharsets.UTF_8)
+    .build();
+----
+
+== RCON Protocol Notes
+
+=== Packet Format
+
+All integers are stored in **little-endian** byte order.
+
+|===
+| Field name | Field type | Notes
+
+| Length     | int32      | Length of remainder of packet
+| Request ID | int32      | Client-generated ID
+| Type       | int32      | 3 for login, 2 to run a command, 0 for response
+| Payload    | byte[]     | NULL-terminated ASCII text
+| 1-byte pad | byte       | NULL
+
+|===
+
+=== Packet Types
+
+* **3 (SERVERDATA_AUTH)**: Authentication request
+* **2 (SERVERDATA_AUTH_RESPONSE)**: Authentication response (-1 indicates failure)
+* **2 (SERVERDATA_EXECCOMMAND)**: Command execution request
+* **0 (SERVERDATA_RESPONSE_VALUE)**: Command response
+
+=== Fragmentation
+
+The Minecraft server can fragment responses across multiple packets.
+
+Maximum payload sizes are:
+
+* Client to Server: 1446 bytes
+* Server to Client: 4096 bytes
+
+=== Character Encoding
+
+Default is UTF-8. Use `StandardCharsets.ISO_8859_1` for legacy servers that use
+color codes (section sign `§`).
+
+[source,java]
+----
+import java.nio.charset.StandardCharsets;
+
+Rcon rcon = Rcon.newBuilder()
+    .withChannel(channel)
+    .withCharset(StandardCharsets.ISO_8859_1)
+    .build();
+----
+
+== Testing
+
+=== Unit Tests
+
+Run unit tests (119 tests):
+
+[source,shell]
+----
+./gradlew test
+----
+
+Test reports are generated at `build/reports/tests/test/index.html`.
+
+=== Integration Tests
+
+Integration tests use Testcontainers to run against a real Minecraft server:
+
+[source,shell]
+----
+./gradlew integrationTest
+----
+
+To skip integration tests locally:
+
+[source,shell]
+----
+SKIP_INTEGRATION_TESTS=true ./gradlew test
+----
+
+=== GitHub Actions
+
+The project includes two GHA workflows:
+
+* **Unit Tests**: Runs on Java 11, 17, and 21
+* **Integration Tests**: Tests against Minecraft Paper 1.21.8 server
+
+== Contributing
+
+=== Running Tests
+
+[source,shell]
+----
+# Run all tests
+./gradlew test
+
+# Run only unit tests
+./gradlew test
+
+# Run integration tests
+./gradlew integrationTest
+
+# Clean build
+./gradlew clean
+----
+
+=== Code Style
+
+Follow standard Java coding conventions. Run tests before committing:
+
+[source,shell]
+----
+./gradlew test
+----
+
+== License
+
+This project is licensed under the MIT License.
+
+== References
+
+* https://developer.valvesoftware.com/wiki/RCON[Source RCON Protocol]
+* https://papermc.io/[PaperMC - Minecraft Server Software]

@@ -1,0 +1,124 @@
+plugins {
+    id 'java-library'
+}
+
+group 'org.cavarest'
+version '0.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JUnit for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Testcontainers for integration testing with Docker
+    testImplementation 'org.testcontainers:testcontainers:1.19.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
+
+    // Apache Commons for utility functions
+    testImplementation 'org.apache.commons:commons-lang3:3.14.0'
+}
+
+test {
+    useJUnitPlatform()
+
+    // Run only unit tests by default (exclude integration tests)
+    exclude '**/*IntegrationTest*'
+
+    // Configure test reports
+    reports {
+        junitXml.required = true
+        html.required = true
+    }
+}
+
+// Custom task for running integration tests
+task integrationTest(type: Test) {
+    useJUnitPlatform {
+        includeTags 'integration'
+        excludeTags 'unit'
+    }
+
+    dependsOn test
+
+    // Integration tests need Docker
+    onlyIf {
+        System.getenv('SKIP_INTEGRATION_TESTS') == null
+    }
+
+    reports {
+        junitXml.required = true
+        html.required = true
+    }
+}
+
+// Configure all test tasks
+tasks.withType(Test).configureEach {
+    maxParallelForks = 1  // Integration tests should run sequentially
+    forkEvery = 1
+
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        displayGranularity = 1
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'org.cavarest.rcon',
+            'Implementation-Version': version
+        )
+    }
+}
+
+tasks.register('cleanTests') {
+    doLast {
+        delete 'build/test-results'
+        delete 'build/reports/tests'
+    }
+}
+
+// Configure JavaDoc generation (javadoc task is provided by Java plugin)
+javadoc {
+    description = 'Generates JavaDoc API documentation'
+    group = 'documentation'
+
+    source = sourceSets.main.allJava
+    classpath = configurations.compileClasspath + sourceSets.main.runtimeClasspath
+    destinationDir = file("${buildDir}/docs/javadoc")
+    title = "${project.name} ${project.version} API"
+
+    // Exclude generated sources and test classes
+    exclude '**/*.html'
+    exclude '**/package-info.java'
+
+    options.author = true
+    options.version = true
+    options.links(
+        'https://docs.oracle.com/javase/8/docs/api/'
+    )
+}
+
+// Clean JavaDoc output
+tasks.register('cleanJavadoc') {
+    doLast {
+        delete 'build/docs'
+    }
+}
+
+// Combine clean tasks
+tasks.register('cleanAll') {
+    dependsOn 'clean', 'cleanTests', 'cleanJavadoc'
+    doLast {
+        println 'Cleaned build, test-results, reports, and javadoc'
+    }
+}

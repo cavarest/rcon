@@ -1,0 +1,105 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      checks: write
+      contents: read
+
+    strategy:
+      matrix:
+        java-version: [11, 17, 21]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK ${{ matrix.java-version }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java-version }}
+        distribution: 'temurin'
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Build with Gradle
+      run: |
+        echo "🔨 Compiling Java source code..."
+        ./gradlew clean compileJava
+
+    - name: Run unit tests
+      run: |
+        echo "🧪 Running unit tests..."
+        ./gradlew test --info 2>&1 | tee test_output.log
+
+    - name: Publish Test Report
+      if: success() || failure()
+      uses: scacap/action-surefire-report@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        report_paths: '**/test-results/**/*.xml'
+        check_name: Test Report (Java ${{ matrix.java-version }})
+        fail_on_test_failures: false
+        fail_if_no_tests: true
+        skip_publishing: false
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-java-${{ matrix.java-version }}
+        path: |
+          build/test-results/
+          build/reports/tests/test/
+          test_output.log
+        retention-days: 30
+
+    - name: Build JAR
+      run: |
+        echo "🏗️ Building JAR..."
+        ./gradlew jar
+
+    - name: Generate JavaDoc
+      run: |
+        echo "📚 Generating JavaDoc..."
+        ./gradlew javadoc
+
+    - name: Upload JAR artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cavarest-rcon-Java${{ matrix.java-version }}
+        path: build/libs/cavarest-rcon-*.jar
+        retention-days: 30
+
+    - name: Upload JavaDoc artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: javadoc-java${{ matrix.java-version }}
+        path: build/docs/javadoc/
+        retention-days: 30
+
+    - name: Display test summary
+      if: always()
+      run: |
+        echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ -f build/reports/tests/test/index.html ]; then
+          echo "✅ Tests completed. Check the test report for details." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ No test report found." >> $GITHUB_STEP_SUMMARY
+        fi
