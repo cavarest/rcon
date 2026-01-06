@@ -201,25 +201,29 @@ Rcon rcon = Rcon.newBuilder()
 
 == Testing
 
+This project includes both unit tests and integration tests to ensure code quality and reliability.
+
 === Unit Tests
 
-Run unit tests (119 tests):
+Unit tests verify the core functionality of the RCON library without requiring external dependencies:
 
 [source,shell]
 ----
 ./gradlew test
 ----
 
-Test reports are generated at `build/reports/tests/test/index.html`.
+Unit tests are fast and suitable for local development. Test reports are generated at `build/reports/tests/test/index.html`.
 
 === Integration Tests
 
-Integration tests use Testcontainers to run against a real Minecraft server:
+Integration tests verify the library works correctly against a real Minecraft server using Testcontainers:
 
 [source,shell]
 ----
 ./gradlew integrationTest
 ----
+
+Integration tests require Docker and take longer to run. They are automatically skipped when no Docker daemon is available.
 
 To skip integration tests locally:
 
@@ -228,12 +232,114 @@ To skip integration tests locally:
 SKIP_INTEGRATION_TESTS=true ./gradlew test
 ----
 
-=== GitHub Actions
+=== Test Configuration
 
-The project includes two GHA workflows:
+Tests are organized using JUnit 5 tags:
 
-* **Unit Tests**: Runs on Java 11, 17, and 21
-* **Integration Tests**: Tests against Minecraft Paper 1.21.8 server
+* *Unit tests*: Tagged with `@Tag("unit")` or no tag, run with `./gradlew test`
+* *Integration tests*: Tagged with `@Tag("integration")`, run with `./gradlew integrationTest`
+
+The default `test` task excludes integration tests, ensuring fast local test execution.
+
+== Development Workflow
+
+This section describes the development workflow, testing procedures, and release process.
+
+=== Pre-Release Checklist
+
+Before creating a release, ensure all tests pass:
+
+. Run unit tests:
++
+[source,shell]
+----
+./gradlew test
+----
+
+. Run integration tests (requires Docker):
++
+[source,shell]
+----
+./gradlew integrationTest
+----
+
+. Verify all code quality checks pass:
++
+[source,shell]
+----
+./gradlew check
+----
+
+=== Creating a Release
+
+Releases are automated using GitHub Actions. To create a release:
+
+==== Option 1: Create GitHub Release (Recommended)
+
+. Go to https://github.com/cavarest/rcon/releases/new[new release page]
+. Create a new tag (e.g., `v0.1.0`)
+. The `Publish Release` workflow will automatically:
+  - Build the project
+  - Run tests
+  - Publish to GitHub Packages
+
+==== Option 2: Push a Git Tag
+
+[source,shell]
+----
+# Create and push a version tag
+git tag v0.1.0
+git push origin v0.1.0
+----
+
+The `Publish Release` workflow will trigger on the tag push.
+
+==== Option 3: Manual Trigger
+
+Navigate to https://github.com/cavarest/rcon/actions/workflows/publish-release.yml[Publish Release workflow] and click "Run workflow".
+
+=== GitHub Actions Workflows
+
+The project includes the following CI/CD workflows:
+
+[cols="2,3,3"]
+|===
+| Workflow | Trigger | Purpose
+
+| Unit Tests | On push to main | Runs unit tests on Java 11, 17, and 21
+
+| Integration Tests | On push to main | Tests against Minecraft Paper 1.21.8 server
+
+| Publish Release | On release creation, git tag push, or manual | Builds and publishes to GitHub Packages
+
+| Trigger Release | Manual | Provides a simple button to create a release
+
+| Dependency Submission | On push to main | Submits dependencies to GitHub Dependency Insights
+|===
+
+=== Version Management
+
+The project version is defined in `version.properties`. To update the version:
+
+. Edit `version.properties`:
++
+[source,properties]
+----
+version=0.2.0
+----
+
+. Commit and tag appropriately
+
+=== Local Build
+
+To build the project locally without running tests:
+
+[source,shell]
+----
+./gradlew clean build -x test
+----
+
+The JAR file will be generated at `build/libs/cavarest-rcon-{version}.jar`.
 
 == Contributing
 
@@ -242,7 +348,7 @@ The project includes two GHA workflows:
 [source,shell]
 ----
 # Run all tests
-./gradlew test
+./gradlew test integrationTest
 
 # Run only unit tests
 ./gradlew test
@@ -252,15 +358,6 @@ The project includes two GHA workflows:
 
 # Clean build
 ./gradlew clean
-----
-
-=== Code Style
-
-Follow standard Java coding conventions. Run tests before committing:
-
-[source,shell]
-----
-./gradlew test
 ----
 
 == License
