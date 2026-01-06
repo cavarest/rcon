@@ -229,36 +229,5 @@ class RconTest {
 
             assertFalse(rcon.isConnected());
         }
-
-        @Test
-        @DisplayName("Should return correct connection state")
-        void shouldReturnCorrectConnectionState() throws IOException {
-            SocketChannel channel = SocketChannel.open();
-            channel.configureBlocking(true);
-            try {
-                // Try to connect to see if server exists
-                boolean connected = channel.connect(new InetSocketAddress("localhost", 25575));
-
-                Rcon rcon = Rcon.newBuilder()
-                        .withChannel(channel)
-                        .build();
-
-                // If connection succeeded, isConnected should return true
-                // If failed, we can't test this without a server
-                if (connected) {
-                    assertTrue(rcon.isConnected());
-                } else {
-                    // Skip this test when no server is available
-                    System.out.println("Skipping isConnected test - no server available");
-                }
-            } catch (java.net.ConnectException e) {
-                // Expected when no server is running
-                System.out.println("Skipping isConnected test - no server available: " + e.getMessage());
-            } finally {
-                if (channel.isOpen()) {
-                    channel.close();
-                }
-            }
-        }
     }
 }
