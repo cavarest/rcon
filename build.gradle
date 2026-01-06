@@ -3,153 +3,47 @@ plugins {
     id 'maven-publish'
 }
 
-group 'org.cavarest'
-version '0.1.0'
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
-}
-
 repositories {
     mavenCentral()
 }
 
+group = 'org.cavarest'
+version = new File("${projectDir}/version.properties").readLines()[0].split('=')[1].trim()
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+    
+    withJavadocJar()
+    withSourcesJar()
+}
+
 dependencies {
-    // JUnit for testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // Testcontainers for integration testing with Docker
-    testImplementation 'org.testcontainers:testcontainers:1.19.3'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
-
-    // Apache Commons for utility functions
-    testImplementation 'org.apache.commons:commons-lang3:3.14.0'
 }
 
 test {
     useJUnitPlatform()
-
-    // Run only unit tests by default (exclude integration tests)
-    exclude '**/*IntegrationTest*'
-
-    // Configure test reports
-    reports {
-        junitXml.required = true
-        html.required = true
-    }
 }
 
-// Custom task for running integration tests
-task integrationTest(type: Test) {
-    useJUnitPlatform {
-        includeTags 'integration'
-        excludeTags 'unit'
-    }
-
-    // Don't depend on test task - run separately to avoid race conditions
-    // dependsOn test
-
-    // Integration tests need Docker
-    onlyIf {
-        System.getenv('SKIP_INTEGRATION_TESTS') == null || System.getenv('SKIP_INTEGRATION_TESTS').toLowerCase() != 'true'
-    }
-
-    doFirst {
-        println "Running integration tests against ${System.getenv('RCON_HOST') ?: 'localhost'}:${System.getenv('RCON_PORT') ?: '25575'}"
-    }
-
-    // Configure test reports with proper paths
-    reports {
-        junitXml {
-            required = true
-            outputPerTestCase = true
-        }
-        html {
-            required = true
-        }
-    }
-}
-
-// Configure all test tasks
-tasks.withType(Test).configureEach {
-    maxParallelForks = 1  // Integration tests should run sequentially
-    forkEvery = 1
-
-    testLogging {
-        events 'passed', 'skipped', 'failed'
-        displayGranularity = 1
-    }
-}
-
-jar {
-    manifest {
-        attributes(
-            'Implementation-Title': 'org.cavarest.rcon',
-            'Implementation-Version': version
-        )
-    }
-}
-
-tasks.register('cleanTests') {
-    doLast {
-        delete 'build/test-results'
-        delete 'build/reports/tests'
-    }
-}
-
-// Configure JavaDoc generation (javadoc task is provided by Java plugin)
-javadoc {
-    description = 'Generates JavaDoc API documentation'
-    group = 'documentation'
-
-    source = sourceSets.main.allJava
-    classpath = configurations.compileClasspath + sourceSets.main.runtimeClasspath
-    destinationDir = file("${buildDir}/docs/javadoc")
-    title = "${project.name} ${project.version} API"
-
-    // Exclude generated sources and test classes
-    exclude '**/*.html'
-    exclude '**/package-info.java'
-
-    options.author = true
-    options.version = true
-    options.links(
-        'https://docs.oracle.com/javase/8/docs/api/'
-    )
-}
-
-// Clean JavaDoc output
-tasks.register('cleanJavadoc') {
-    doLast {
-        delete 'build/docs'
-    }
-}
-
-// Combine clean tasks
-tasks.register('cleanAll') {
-    dependsOn 'clean', 'cleanTests', 'cleanJavadoc'
-    doLast {
-        println 'Cleaned build, test-results, reports, and javadoc'
-    }
-}
-
-// Publishing configuration for GitHub Packages
 publishing {
     publications {
-        mavenJava(MavenPublication) {
-            from components.java
+        gpr(MavenPublication) {
+            from(components.java)
+            
             pom {
-                name = 'org.cavarest.rcon'
-                description = 'Java RCON library for Minecraft servers'
+                name = 'Cavarest RCON Library'
+                description = 'A Java library for interacting with Minecraft servers using the RCON protocol'
                 url = 'https://github.com/cavarest/rcon'
+                
                 licenses {
                     license {
                         name = 'MIT License'
                         url = 'https://opensource.org/licenses/MIT'
                     }
                 }
+                
                 developers {
                     developer {
                         id = 'cavarest'
@@ -157,6 +51,7 @@ publishing {
                         email = 'cavarest@example.com'
                     }
                 }
+                
                 scm {
                     connection = 'scm:git@github.com:cavarest/rcon.git'
                     developerConnection = 'scm:git@github.com:cavarest/rcon.git'
@@ -165,13 +60,14 @@ publishing {
             }
         }
     }
+    
     repositories {
         maven {
-            name = 'GitHubPackages'
-            url = 'https://maven.pkg.github.com/cavarest/rcon'
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/cavarest/rcon")
             credentials {
-                username = System.getenv('GITHUB_ACTOR')
-                password = System.getenv('GITHUB_TOKEN')
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
             }
         }
     }
