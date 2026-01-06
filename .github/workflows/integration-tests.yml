@@ -41,7 +41,7 @@ jobs:
           MAX_PLAYERS: '5'
           MEMORY: '512M'
         options: >-
-          --health-cmd "echo 'list' | nc -w 3 localhost 25575 | grep -q 'Connected' || exit 1"
+          --health-cmd "printf 'me health_check\\0' | nc -w 3 localhost 25575 | grep -q 'health_check' || exit 1"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 15
@@ -64,7 +64,7 @@ jobs:
       run: |
         echo "⏳ Waiting for Minecraft server to start..."
         for i in {1..60}; do
-          if echo 'list' | nc -w 3 localhost 25575 2>/dev/null | grep -q "Connected"; then
+          if printf 'me health_check\\0' | nc -w 3 localhost 25575 2>/dev/null | grep -q "health_check"; then
             echo "✅ Minecraft server is ready!"
             exit 0
           fi
@@ -77,11 +77,11 @@ jobs:
     - name: Verify RCON is accessible
       run: |
         echo "🔌 Testing RCON connection..."
-        echo '' | nc -w 3 localhost 25575
-        if [ $? -eq 0 ]; then
-          echo "✅ RCON port is accessible"
+        RESPONSE=$(printf 'me health_check\\0' | nc -w 3 localhost 25575 2>/dev/null)
+        if echo "$RESPONSE" | grep -q "health_check"; then
+          echo "✅ RCON is accessible and responding"
         else
-          echo "⚠️ RCON port may not be ready yet"
+          echo "⚠️ RCON may not be ready yet"
         fi
 
     - name: Build with Gradle
