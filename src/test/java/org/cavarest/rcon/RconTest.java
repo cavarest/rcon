@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
@@ -79,30 +78,6 @@ class RconTest {
             Rcon.RconBuilder builder = Rcon.newBuilder();
             assertNotNull(builder);
             // Default values should be used when building
-        }
-    }
-
-    @Nested
-    @DisplayName("Connect Methods Tests")
-    class ConnectTests {
-
-        @Test
-        @DisplayName("connect(SocketAddress) should return Rcon instance")
-        void connectShouldReturnRconInstance() throws IOException {
-            // The connect method returns an Rcon instance - the connection
-            // is established but may not be usable if no server is running
-            Rcon rcon = Rcon.connect(new InetSocketAddress("localhost", 25575));
-            assertNotNull(rcon);
-            // Close the connection immediately
-            rcon.close();
-        }
-
-        @Test
-        @DisplayName("connect(hostname, port) should return Rcon instance")
-        void connectWithHostnameAndPortShouldReturnRconInstance() throws IOException {
-            Rcon rcon = Rcon.connect("localhost", 25575);
-            assertNotNull(rcon);
-            rcon.close();
         }
     }
 

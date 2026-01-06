@@ -3,6 +3,7 @@ package org.cavarest.rcon;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -224,5 +225,29 @@ class RconIntegrationTest {
 
         CompletableFuture.allOf(futures).get(30, TimeUnit.SECONDS);
         assertFalse(hasError.get(), "No errors should occur during concurrent commands");
+    }
+
+    @Test
+    @DisplayName("Rcon.connect(SocketAddress) should return connected Rcon instance")
+    void rconConnectWithSocketAddressShouldReturnConnectedInstance() throws IOException {
+        try (Rcon rcon = Rcon.connect(new InetSocketAddress(RCON_HOST, RCON_PORT))) {
+            assertNotNull(rcon, "Rcon instance should not be null");
+            // Try to authenticate
+            rcon.authenticate(RCON_PASSWORD);
+            String response = rcon.sendCommand("list");
+            assertNotNull(response, "Response should not be null");
+        }
+    }
+
+    @Test
+    @DisplayName("Rcon.connect(hostname, port) should return connected Rcon instance")
+    void rconConnectWithHostnameAndPortShouldReturnConnectedInstance() throws IOException {
+        try (Rcon rcon = Rcon.connect(RCON_HOST, RCON_PORT)) {
+            assertNotNull(rcon, "Rcon instance should not be null");
+            // Try to authenticate
+            rcon.authenticate(RCON_PASSWORD);
+            String response = rcon.sendCommand("list");
+            assertNotNull(response, "Response should not be null");
+        }
     }
 }
