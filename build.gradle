@@ -13,7 +13,7 @@ version = new File("${projectDir}/version.properties").readLines()[0].split('=')
 java {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
-    
+
     withJavadocJar()
     withSourcesJar()
 }
@@ -39,19 +39,19 @@ publishing {
     publications {
         gpr(MavenPublication) {
             from(components.java)
-            
+
             pom {
                 name = 'Cavarest RCON Library'
                 description = 'A Java library for interacting with Minecraft servers using the RCON protocol'
                 url = 'https://github.com/cavarest/rcon'
-                
+
                 licenses {
                     license {
                         name = 'MIT License'
                         url = 'https://opensource.org/licenses/MIT'
                     }
                 }
-                
+
                 developers {
                     developer {
                         id = 'cavarest'
@@ -59,7 +59,7 @@ publishing {
                         email = 'cavarest@example.com'
                     }
                 }
-                
+
                 scm {
                     connection = 'scm:git@github.com:cavarest/rcon.git'
                     developerConnection = 'scm:git@github.com:cavarest/rcon.git'
@@ -68,7 +68,7 @@ publishing {
             }
         }
     }
-    
+
     repositories {
         maven {
             name = "GitHubPackages"
@@ -78,5 +78,65 @@ publishing {
                 password = System.getenv("GITHUB_TOKEN")
             }
         }
+    }
+}
+
+// Custom release task
+tasks.register('release') {
+    group = 'version management'
+    description = 'Prepare and tag a release'
+
+    doLast {
+        def releaseVersion = project.hasProperty('releaseVersion') ? project.property('releaseVersion') : null
+        def postReleaseVersion = project.hasProperty('postReleaseVersion') ? project.property('postReleaseVersion') : null
+
+        if (!releaseVersion) {
+            throw new GradleException("releaseVersion property is required")
+        }
+
+        // Read current version
+        def versionFile = new File("${projectDir}/version.properties")
+        def lines = versionFile.readLines()
+
+        // Update version file
+        def newLines = lines.collect { line ->
+            if (line.startsWith('version=')) {
+                "version=${releaseVersion}"
+            } else {
+                line
+            }
+        }
+        versionFile.write(newLines.join('\n'))
+
+        // Commit version change
+        exec {
+            commandLine 'git', 'add', 'version.properties'
+        }
+        exec {
+            commandLine 'git', 'commit', '-m', "chore(release): ${releaseVersion}"
+        }
+        exec {
+            commandLine 'git', 'tag', "-a", releaseVersion, '-m', "Release ${releaseVersion}"
+        }
+
+        // Set post-release version if provided
+        if (postReleaseVersion) {
+            newLines = newLines.collect { line ->
+                if (line.startsWith('version=')) {
+                    "version=${postReleaseVersion}"
+                } else {
+                    line
+                }
+            }
+            versionFile.write(newLines.join('\n'))
+            exec {
+                commandLine 'git', 'add', 'version.properties'
+            }
+            exec {
+                commandLine 'git', 'commit', '-m', "chore: prepare for next development version (${postReleaseVersion})"
+            }
+        }
+
+        println "Release ${releaseVersion} prepared. Push with: git push && git push origin ${releaseVersion}"
     }
 }

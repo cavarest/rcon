@@ -16,10 +16,10 @@ jobs:
   trigger-release:
     runs-on: ubuntu-latest
     name: Trigger the release
-    
+
     permissions:
       contents: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,4 +42,10 @@ jobs:
           git config --global user.name "GitHub Action"
 
       - name: Run gradle release task
-        run: ./gradlew release -PreleaseVersion=${{ github.event.inputs.release-version }} -PpostReleaseVersion=${{ github.event.inputs.post-release-version }}
+        run: |
+          ./gradlew release -PreleaseVersion=${{ github.event.inputs.release-version }} -PpostReleaseVersion=${{ github.event.inputs.post-release-version }}
+
+      - name: Push release changes
+        run: |
+          git push
+          git push origin ${{ github.event.inputs.release-version }}
