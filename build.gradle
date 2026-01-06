@@ -81,14 +81,13 @@ publishing {
     }
 }
 
-// Custom release task
+// Custom release task - creates tag at release version
 tasks.register('release') {
     group = 'version management'
     description = 'Prepare and tag a release'
 
     doLast {
         def releaseVersion = project.hasProperty('releaseVersion') ? project.property('releaseVersion') : null
-        def postReleaseVersion = project.hasProperty('postReleaseVersion') ? project.property('postReleaseVersion') : null
 
         if (!releaseVersion) {
             throw new GradleException("releaseVersion property is required")
@@ -98,7 +97,7 @@ tasks.register('release') {
         def versionFile = new File("${projectDir}/version.properties")
         def lines = versionFile.readLines()
 
-        // Update version file
+        // Update version file to release version
         def newLines = lines.collect { line ->
             if (line.startsWith('version=')) {
                 "version=${releaseVersion}"
@@ -109,34 +108,44 @@ tasks.register('release') {
         versionFile.write(newLines.join('\n'))
 
         // Commit version change
-        exec {
-            commandLine 'git', 'add', 'version.properties'
-        }
-        exec {
-            commandLine 'git', 'commit', '-m', "chore(release): ${releaseVersion}"
-        }
-        exec {
-            commandLine 'git', 'tag', "-a", releaseVersion, '-m', "Release ${releaseVersion}"
+        exec { commandLine 'git', 'add', 'version.properties' }
+        exec { commandLine 'git', 'commit', '-m', "chore(release): ${releaseVersion}" }
+        exec { commandLine 'git', 'tag', "-a", releaseVersion, '-m', "Release ${releaseVersion}" }
+
+        println "Release ${releaseVersion} prepared."
+        println "Next: Run postRelease task or update version.properties manually."
+    }
+}
+
+// Custom postRelease task - updates to next development version
+tasks.register('postRelease') {
+    group = 'version management'
+    description = 'Prepare for next development version after release'
+
+    doLast {
+        def postReleaseVersion = project.hasProperty('postReleaseVersion') ? project.property('postReleaseVersion') : null
+
+        if (!postReleaseVersion) {
+            throw new GradleException("postReleaseVersion property is required")
         }
 
-        // Set post-release version if provided
-        if (postReleaseVersion) {
-            newLines = newLines.collect { line ->
-                if (line.startsWith('version=')) {
-                    "version=${postReleaseVersion}"
-                } else {
-                    line
-                }
-            }
-            versionFile.write(newLines.join('\n'))
-            exec {
-                commandLine 'git', 'add', 'version.properties'
-            }
-            exec {
-                commandLine 'git', 'commit', '-m', "chore: prepare for next development version (${postReleaseVersion})"
+        def versionFile = new File("${projectDir}/version.properties")
+        def lines = versionFile.readLines()
+
+        // Update version file to post-release version
+        def newLines = lines.collect { line ->
+            if (line.startsWith('version=')) {
+                "version=${postReleaseVersion}"
+            } else {
+                line
             }
         }
+        versionFile.write(newLines.join('\n'))
 
-        println "Release ${releaseVersion} prepared. Push with: git push && git push origin ${releaseVersion}"
+        exec { commandLine 'git', 'add', 'version.properties' }
+        exec { commandLine 'git', 'commit', '-m', "chore: prepare for next development version (${postReleaseVersion})" }
+
+        println "Post-release version ${postReleaseVersion} prepared."
+        println "Push with: git push"
     }
 }

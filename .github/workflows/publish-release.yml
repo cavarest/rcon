@@ -60,7 +60,18 @@ jobs:
       - name: Prepare release
         if: github.event_name == 'workflow_dispatch'
         run: |
-          ./gradlew release -PreleaseVersion=${{ github.event.inputs.release-version }} -PpostReleaseVersion=${{ github.event.inputs.post-release-version }}
+          ./gradlew release -PreleaseVersion=${{ github.event.inputs.release-version }}
+
+      - name: Build and publish to GitHub Packages
+        run: ./gradlew clean build publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+      - name: Prepare post-release version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ./gradlew postRelease -PpostReleaseVersion=${{ github.event.inputs.post-release-version }}
 
       - name: Push release changes
         if: github.event_name == 'workflow_dispatch'
@@ -75,12 +86,6 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
-
-      - name: Build and publish to GitHub Packages
-        run: ./gradlew clean build publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
 
       - name: Upload JAR to GitHub Release
         if: github.event_name == 'release'
