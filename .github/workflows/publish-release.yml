@@ -3,16 +3,20 @@ name: Publish Release
 on:
   release:
     types: [created]
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    name: Publish release artifacts
-    
+    name: Publish to GitHub Packages
+
     permissions:
       contents: read
       packages: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
