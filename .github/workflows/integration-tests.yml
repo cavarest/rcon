@@ -41,7 +41,7 @@ jobs:
           MAX_PLAYERS: '5'
           MEMORY: '512M'
         options: >-
-          --health-cmd "printf 'me health_check\\0' | nc -w 3 localhost 25575 | grep -q 'health_check' || exit 1"
+          --health-cmd "mc-health"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 15
@@ -63,22 +63,13 @@ jobs:
     - name: Wait for Minecraft server to be ready
       run: |
         echo "⏳ Waiting for Minecraft server to start..."
-        for i in {1..60}; do
-          if printf 'me health_check\\0' | nc -w 3 localhost 25575 2>/dev/null | grep -q "health_check"; then
-            echo "✅ Minecraft server is ready!"
-            exit 0
-          fi
-          echo "Attempt $i: Waiting for server..."
-          sleep 5
-        done
-        echo "❌ Minecraft server did not start in time"
-        exit 1
+        echo "The health check will ensure the server is ready before we proceed"
 
     - name: Verify RCON is accessible
       run: |
         echo "🔌 Testing RCON connection..."
-        RESPONSE=$(printf 'me health_check\\0' | nc -w 3 localhost 25575 2>/dev/null)
-        if echo "$RESPONSE" | grep -q "health_check"; then
+        RESPONSE=$(printf 'version\\0' | nc -w 3 localhost 25575 2>/dev/null)
+        if echo "$RESPONSE" | grep -q "version\\|Paper\\|Minecraft"; then
           echo "✅ RCON is accessible and responding"
         else
           echo "⚠️ RCON may not be ready yet"
