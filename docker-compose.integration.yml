@@ -3,7 +3,7 @@
 
 services:
   minecraft:
-    image: marctv/minecraft-papermc-server:1.21.8
+    image: itzg/minecraft-server
     container_name: cavarest-rcon-minecraft
     ports:
       - "25565:25565"   # Minecraft server port
@@ -11,9 +11,10 @@ services:
     environment:
       - EULA=TRUE
       - ONLINE_MODE=false
-      - SERVER_PORT=25565
-      - RCON_PORT=25575
+      - TYPE=PAPER
+      - VERSION=1.21.8
       - RCON_PASSWORD=cavarest
+      - ENABLE_RCON=true
       - MAX_PLAYERS=5
       - MEMORY=512M
     volumes:

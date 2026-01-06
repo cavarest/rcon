@@ -48,16 +48,27 @@ task integrationTest(type: Test) {
         excludeTags 'unit'
     }
 
-    dependsOn test
+    // Don't depend on test task - run separately to avoid race conditions
+    // dependsOn test
 
     // Integration tests need Docker
     onlyIf {
-        System.getenv('SKIP_INTEGRATION_TESTS') == null
+        System.getenv('SKIP_INTEGRATION_TESTS') == null || System.getenv('SKIP_INTEGRATION_TESTS').toLowerCase() != 'true'
     }
 
+    doFirst {
+        println "Running integration tests against ${System.getenv('RCON_HOST') ?: 'localhost'}:${System.getenv('RCON_PORT') ?: '25575'}"
+    }
+
+    // Configure test reports with proper paths
     reports {
-        junitXml.required = true
-        html.required = true
+        junitXml {
+            required = true
+            outputPerTestCase = true
+        }
+        html {
+            required = true
+        }
     }
 }
 

@@ -6,9 +6,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.channels.ByteChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -138,15 +138,15 @@ class RconTest {
         }
 
         @Test
-        @DisplayName("Should set read timeout")
-        void shouldSetReadTimeout() throws IOException {
+        @DisplayName("Should set fragment timeout")
+        void shouldSetFragmentTimeout() throws IOException {
             SocketChannel channel = SocketChannel.open();
             channel.configureBlocking(true);
             try {
                 Rcon rcon = Rcon.newBuilder()
                         .withChannel(channel)
                         .build();
-                rcon.setReadTimeout(10000);
+                rcon.setFragmentTimeout(100, TimeUnit.MILLISECONDS);
                 rcon.close();
             } finally {
                 channel.close();

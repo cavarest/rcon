@@ -49,6 +49,8 @@ public class RconClient implements Closeable {
     private Rcon rcon;
     private boolean connected = false;
     private boolean verbose = false;
+    private FragmentResolutionStrategy fragmentStrategy = FragmentResolutionStrategy.ACTIVE_PROBE;
+    private long fragmentTimeoutMillis = 100;
 
     /**
      * Creates a new RconClient with the specified connection parameters.
@@ -123,12 +125,25 @@ public class RconClient implements Closeable {
 
     /**
      * Sends a command to the server and returns the response.
+     * Uses the default fragment resolution strategy (ACTIVE_PROBE).
      *
      * @param command The command to execute
      * @return The server's response, or an empty string if no response
      * @throws IOException if not connected or a communication error occurs
      */
     public String sendCommand(final String command) throws IOException {
+        return sendCommand(command, fragmentStrategy);
+    }
+
+    /**
+     * Sends a command to the server with the specified fragment resolution strategy.
+     *
+     * @param command The command to execute
+     * @param strategy The strategy for handling fragmented responses
+     * @return The server's response, or an empty string if no response
+     * @throws IOException if not connected or a communication error occurs
+     */
+    public String sendCommand(final String command, final FragmentResolutionStrategy strategy) throws IOException {
         if (!connected || rcon == null) {
             throw new IOException("Not connected to RCON server");
         }
@@ -136,7 +151,7 @@ public class RconClient implements Closeable {
         log(Level.INFO, "Sending command: " + command);
 
         try {
-            String response = rcon.sendCommand(command);
+            String response = rcon.sendCommand(command, strategy);
             log(Level.INFO, "Response: " + (response != null ? response : "(null)"));
             return response != null ? response : "";
         } catch (IOException e) {
@@ -196,6 +211,31 @@ public class RconClient implements Closeable {
         this.verbose = verbose;
         if (rcon != null) {
             rcon.setVerbose(verbose);
+        }
+    }
+
+    /**
+     * Sets the fragment resolution strategy for handling fragmented command responses.
+     *
+     * @param strategy The strategy to use
+     */
+    public void setFragmentResolutionStrategy(final FragmentResolutionStrategy strategy) {
+        this.fragmentStrategy = strategy;
+        if (rcon != null) {
+            rcon.setFragmentResolutionStrategy(strategy);
+        }
+    }
+
+    /**
+     * Sets the timeout for fragment resolution (used with TIMEOUT strategy).
+     *
+     * @param timeout The timeout value
+     * @param unit The time unit for the timeout
+     */
+    public void setFragmentTimeout(final long timeout, final java.util.concurrent.TimeUnit unit) {
+        this.fragmentTimeoutMillis = unit.toMillis(timeout);
+        if (rcon != null) {
+            rcon.setFragmentTimeout(timeout, unit);
         }
     }
 

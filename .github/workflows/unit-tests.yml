@@ -38,29 +38,26 @@ jobs:
     - name: Run unit tests
       run: |
         echo "🧪 Running unit tests..."
-        ./gradlew test --info 2>&1 | tee test_output.log
+        ./gradlew test
 
-    - name: Publish Test Report
+    - name: Publish JUnit Test Results
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: always() && !cancelled()
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        files: "**/test-results/**/*.xml"
-        check_name: Test Report (Java ${{ matrix.java-version }})
+        files: "build/test-results/test/**/*.xml"
+        check_name: Unit Test Report (Java ${{ matrix.java-version }})
         comment_mode: "off"
         fail_on: "test failures"
-        action_fail: false
-        action_fail_on_inconclusive: true
 
-    - name: Upload test results
+    - name: Upload unit test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-results-java-${{ matrix.java-version }}
+        name: unit-test-results-java-${{ matrix.java-version }}
         path: |
-          build/test-results/
+          build/test-results/test/
           build/reports/tests/test/
-          test_output.log
         retention-days: 30
 
     - name: Build JAR
@@ -90,10 +87,10 @@ jobs:
     - name: Display test summary
       if: always()
       run: |
-        echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## Unit Test Summary (Java ${{ matrix.java-version }})" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         if [ -f build/reports/tests/test/index.html ]; then
-          echo "✅ Tests completed. Check the test report for details." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Unit tests completed. Check the test report for details." >> $GITHUB_STEP_SUMMARY
         else
           echo "⚠️ No test report found." >> $GITHUB_STEP_SUMMARY
         fi

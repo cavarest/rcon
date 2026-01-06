@@ -14,6 +14,7 @@ on:
       - 'test/**'
       - 'build.gradle'
       - '.github/workflows/integration-tests.yml'
+  workflow_dispatch:
 
 jobs:
   integration-test:
@@ -26,26 +27,27 @@ jobs:
 
     services:
       minecraft:
-        image: marctv/minecraft-papermc-server:1.21.8
+        image: itzg/minecraft-server
         ports:
           - 25565:25565
           - 25575:25575
         env:
           EULA: 'TRUE'
           ONLINE_MODE: 'false'
-          SERVER_PORT: '25565'
-          RCON_PORT: '25575'
-          RCON_PASSWORD: cavarest
+          TYPE: 'PAPER'
+          VERSION: '1.21.8'
+          RCON_PASSWORD: 'cavarest'
+          ENABLE_RCON: 'true'
           MAX_PLAYERS: '5'
-          MEMORY: 512M
+          MEMORY: '512M'
         options: >-
           --health-cmd "echo 'list' | nc -w 3 localhost 25575 | grep -q 'Connected' || exit 1"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 15
           --health-start-period 120s
-          -e 'ACCEPT_EULA=TRUE'
-          -e 'EULA=TRUE'
+        volumes:
+          - minecraft-data:/data
 
     steps:
     - name: Checkout code
@@ -57,21 +59,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v5
 
     - name: Wait for Minecraft server to be ready
       run: |
         echo "⏳ Waiting for Minecraft server to start..."
         for i in {1..60}; do
-          if echo 'list' | nc -w 3 localhost 25575 2>/dev/null | grep -q "Connected players"; then
+          if echo 'list' | nc -w 3 localhost 25575 2>/dev/null | grep -q "Connected"; then
             echo "✅ Minecraft server is ready!"
             exit 0
           fi
@@ -104,19 +99,17 @@ jobs:
     - name: Run integration tests
       run: |
         echo "🚀 Running integration tests..."
-        echo "SKIP_INTEGRATION_TESTS=false" >> $GITHUB_ENV
-        ./gradlew integrationTest --info 2>&1 | tee integration_test_output.log
+        ./gradlew integrationTest
 
-    - name: Publish Integration Test Report
-      if: success() || failure()
-      uses: scacap/action-surefire-report@v1
+    - name: Publish JUnit Integration Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always() && !cancelled()
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        report_paths: '**/test-results/**/*.xml'
+        files: "build/test-results/integrationTest/**/*.xml"
         check_name: Integration Test Report
-        fail_on_test_failures: false
-        fail_if_no_tests: false
-        skip_publishing: false
+        comment_mode: "off"
+        fail_on: "test failures"
 
     - name: Upload integration test results
       if: always()
@@ -124,9 +117,8 @@ jobs:
       with:
         name: integration-test-results
         path: |
-          build/test-results/
-          build/reports/tests/test/
-          integration_test_output.log
+          build/test-results/integrationTest/
+          build/reports/tests/integrationTest/
         retention-days: 30
 
     - name: Display integration test summary
@@ -134,8 +126,11 @@ jobs:
       run: |
         echo "## Integration Test Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        if [ -f build/reports/tests/test/index.html ]; then
+        if [ -f build/reports/tests/integrationTest/index.html ]; then
           echo "✅ Integration tests completed. Check the test report for details." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Report Location**: build/reports/tests/integrationTest/index.html" >> $GITHUB_STEP_SUMMARY
+          echo "**JUnit XML**: build/test-results/integrationTest/TEST-org.cavarest.rcon.RconIntegrationTest.xml" >> $GITHUB_STEP_SUMMARY
         else
           echo "⚠️ No test report found." >> $GITHUB_STEP_SUMMARY
         fi
@@ -144,6 +139,8 @@ jobs:
       if: always()
       run: |
         echo "🛑 Stopping Minecraft server container..."
-        # The container will be stopped automatically when the job ends
-        # This is just for cleanup visibility
-        echo "Container will be cleaned up by GitHub Actions"
+        docker stop $(docker ps -q --filter ancestor=itzg/minecraft-server) 2>/dev/null || true
+        docker rm $(docker ps -aq --filter ancestor=itzg/minecraft-server) 2>/dev/null || true
+
+volumes:
+  minecraft-data:

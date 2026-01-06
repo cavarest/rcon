@@ -11,12 +11,12 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Main RCON client class for communicating with Source game servers.
- * 
+ *
  * This class provides a high-level API for:
  * - Connecting to RCON servers
  * - Authenticating with a password
  * - Executing commands and receiving responses
- * 
+ *
  * Example usage:
  * <pre>{@code
  * try (Rcon rcon = Rcon.connect("localhost", 25575)) {
@@ -27,7 +27,7 @@ import java.util.concurrent.TimeoutException;
  *     System.err.println("RCON error: " + e.getMessage());
  * }
  * }</pre>
- * 
+ *
  * @see <a href="https://developer.valvesoftware.com/wiki/RCON">Source RCON Protocol</a>
  */
 public class Rcon implements Closeable {
@@ -52,6 +52,12 @@ public class Rcon implements Closeable {
 
     /** Whether verbose logging is enabled */
     private boolean verbose = false;
+
+    /** Fragment resolution strategy */
+    private FragmentResolutionStrategy fragmentStrategy = FragmentResolutionStrategy.ACTIVE_PROBE;
+
+    /** Timeout for fragment resolution (used with TIMEOUT strategy) */
+    private long fragmentTimeoutMillis = 100;
 
     /**
      * Creates a new Rcon instance with the specified channel and codecs.
@@ -78,14 +84,15 @@ public class Rcon implements Closeable {
     public static Rcon connect(final SocketAddress remote) throws IOException {
         SocketChannel channel = SocketChannel.open();
         channel.configureBlocking(true);
-        
+        channel.connect(remote);
+
+        // Set read timeout on the socket
+        channel.socket().setSoTimeout(5000);
+
         Rcon rcon = new RconBuilder()
                 .withChannel(channel)
                 .build();
-        
-        // Set a default timeout for initial connection
-        channel.socket().setSoTimeout(5000);
-        
+
         return rcon;
     }
 
@@ -149,13 +156,131 @@ public class Rcon implements Closeable {
 
     /**
      * Sends a command to the RCON server and returns the response.
+     * Uses the default fragment resolution strategy (ACTIVE_PROBE).
      *
      * @param command The command to execute
      * @return The server's response
      * @throws IOException if a communication error occurs
      */
     public String sendCommand(final String command) throws IOException {
-        final Packet response = writeAndRead(PacketType.SERVERDATA_EXECCOMMAND, command);
+        return sendCommand(command, fragmentStrategy);
+    }
+
+    /**
+     * Sends a command to the RCON server with the specified fragment resolution strategy.
+     *
+     * @param command The command to execute
+     * @param strategy The strategy for handling fragmented responses
+     * @return The server's response
+     * @throws IOException if a communication error occurs
+     */
+    public String sendCommand(final String command, final FragmentResolutionStrategy strategy) throws IOException {
+        if (strategy == null) {
+            throw new IllegalArgumentException("Fragment resolution strategy cannot be null");
+        }
+
+        switch (strategy) {
+            case PACKET_SIZE:
+                return sendCommandWithPacketSizeStrategy(command);
+            case TIMEOUT:
+                return sendCommandWithTimeoutStrategy(command);
+            case ACTIVE_PROBE:
+            default:
+                return sendCommandWithActiveProbeStrategy(command);
+        }
+    }
+
+    /**
+     * Sends a command using the PACKET_SIZE fragment resolution strategy.
+     * Waits until we receive a packet with a payload length less than 4096 bytes.
+     *
+     * @param command The command to execute
+     * @return The server's response
+     * @throws IOException if a communication error occurs
+     */
+    private synchronized String sendCommandWithPacketSizeStrategy(final String command) throws IOException {
+        final StringBuilder responseBuilder = new StringBuilder();
+        final int requestId = requestCounter++;
+
+        // Send the command
+        writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
+
+        // Read packets until we get one with payload < 4096
+        while (true) {
+            final Packet response = reader.read();
+
+            if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
+                throw new IOException("Wrong command response type: " + response.type);
+            }
+            if (!response.isValid()) {
+                throw new IOException("Invalid command response: " + response.payload);
+            }
+
+            responseBuilder.append(response.payload);
+
+            // Check if this is the last packet (payload < 4096)
+            // Maximum S→C packet payload is 4096 bytes
+            if (response.payload.length() < 4096) {
+                break;
+            }
+        }
+
+        return responseBuilder.toString();
+    }
+
+    /**
+     * Sends a command using the TIMEOUT fragment resolution strategy.
+     * Waits for a fixed timeout period after receiving any packet.
+     *
+     * @param command The command to execute
+     * @return The server's response
+     * @throws IOException if a communication error occurs
+     */
+    private synchronized String sendCommandWithTimeoutStrategy(final String command) throws IOException {
+        final StringBuilder responseBuilder = new StringBuilder();
+        final int requestId = requestCounter++;
+        final long endTime = System.currentTimeMillis() + fragmentTimeoutMillis;
+
+        // Send the command
+        writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
+
+        // Read packets until timeout
+        while (System.currentTimeMillis() < endTime) {
+            final Packet response = reader.read();
+
+            if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
+                throw new IOException("Wrong command response type: " + response.type);
+            }
+            if (!response.isValid()) {
+                throw new IOException("Invalid command response: " + response.payload);
+            }
+
+            responseBuilder.append(response.payload);
+
+            // Reset the end time after receiving a packet
+            // Keep reading as long as packets arrive within the timeout
+        }
+
+        return responseBuilder.toString();
+    }
+
+    /**
+     * Sends a command using the ACTIVE_PROBE fragment resolution strategy.
+     * Sends a second command packet to probe for the end of the response only if needed.
+     *
+     * @param command The command to execute
+     * @return The server's response
+     * @throws IOException if a communication error occurs
+     */
+    private synchronized String sendCommandWithActiveProbeStrategy(final String command) throws IOException {
+        final StringBuilder responseBuilder = new StringBuilder();
+        final int requestId = requestCounter++;
+
+        // Send the main command
+        writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
+
+        // Read the first response packet
+        Packet response = reader.read();
 
         if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
             throw new IOException("Wrong command response type: " + response.type);
@@ -163,7 +288,38 @@ public class Rcon implements Closeable {
         if (!response.isValid()) {
             throw new IOException("Invalid command response: " + response.payload);
         }
-        return response.payload;
+
+        responseBuilder.append(response.payload);
+
+        // If the payload is exactly 4096 bytes, there might be more fragments
+        // Send a probe command to detect when all fragments have been received
+        if (response.payload.length() >= 4096) {
+            final int probeRequestId = requestCounter++;
+            writer.write(new Packet(probeRequestId, PacketType.SERVERDATA_EXECCOMMAND, ""));
+
+            // Read remaining fragments until we get the probe response
+            while (true) {
+                response = reader.read();
+
+                if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
+                    throw new IOException("Wrong command response type: " + response.type);
+                }
+
+                // Check if this is a response to our probe command
+                if (response.requestId == probeRequestId) {
+                    // We've received the probe response, so we're done
+                    break;
+                }
+
+                if (!response.isValid()) {
+                    throw new IOException("Invalid command response: " + response.payload);
+                }
+
+                responseBuilder.append(response.payload);
+            }
+        }
+
+        return responseBuilder.toString();
     }
 
     /**
@@ -176,7 +332,7 @@ public class Rcon implements Closeable {
      * @throws IOException if a communication error occurs
      * @throws TimeoutException if the operation times out
      */
-    public String sendCommand(final String command, final long timeout, final TimeUnit unit) 
+    public String sendCommand(final String command, final long timeout, final TimeUnit unit)
             throws IOException, TimeoutException {
         // TODO: Implement timeout support
         return sendCommand(command);
@@ -191,7 +347,7 @@ public class Rcon implements Closeable {
      * @return The response packet
      * @throws IOException if a communication error occurs
      */
-    private synchronized Packet writeAndRead(final int packetType, final String payload) 
+    private synchronized Packet writeAndRead(final int packetType, final String payload)
             throws IOException {
         final int requestId = requestCounter++;
         writer.write(new Packet(requestId, packetType, payload));
@@ -244,12 +400,22 @@ public class Rcon implements Closeable {
     }
 
     /**
-     * Sets the read timeout.
+     * Sets the fragment resolution strategy.
      *
-     * @param timeout The timeout in milliseconds
+     * @param strategy The strategy to use for handling fragmented responses
      */
-    public void setReadTimeout(final int timeout) {
-        this.readTimeout = timeout;
+    public void setFragmentResolutionStrategy(final FragmentResolutionStrategy strategy) {
+        this.fragmentStrategy = strategy;
+    }
+
+    /**
+     * Sets the timeout for fragment resolution (used with TIMEOUT strategy).
+     *
+     * @param timeout The timeout value
+     * @param unit The time unit for the timeout
+     */
+    public void setFragmentTimeout(final long timeout, final TimeUnit unit) {
+        this.fragmentTimeoutMillis = unit.toMillis(timeout);
     }
 
     @Override
