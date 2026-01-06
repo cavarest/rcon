@@ -20,7 +20,7 @@ services:
     volumes:
       - minecraft-data:/data
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo 'list' | nc -w 3 localhost 25575 | grep -q 'Connected' || exit 1"]
+      test: ["CMD", "mc-health"]
       interval: 30s
       timeout: 10s
       retries: 15
