@@ -3,7 +3,7 @@
 
 services:
   minecraft:
-    image: papermc/paper:1.21.8
+    image: marctv/minecraft-papermc-server:1.21.8
     container_name: cavarest-rcon-minecraft
     ports:
       - "25565:25565"   # Minecraft server port
