@@ -274,16 +274,32 @@ Before creating a release, ensure all tests pass:
 
 Releases are automated using GitHub Actions. To create a release:
 
-==== Option 1: Create GitHub Release (Recommended)
+==== Option 1: GitHub Release UI (Recommended)
 
 . Go to https://github.com/cavarest/rcon/releases/new[new release page]
 . Create a new tag (e.g., `v0.1.0`)
-. The `Publish Release` workflow will automatically:
+. Add release notes (optional)
+. Click "Publish release"
+. The `Release` workflow will automatically:
   - Build the project
-  - Run tests
   - Publish to GitHub Packages
+  - Upload JAR to GitHub Releases
 
-==== Option 2: Push a Git Tag
+==== Option 2: Manual Workflow Trigger
+
+. Navigate to https://github.com/cavarest/rcon/actions/workflows/publish-release.yml[Release workflow]
+. Click "Run workflow"
+. Enter:
+  - `release-version`: e.g., `0.1.0`
+  - `post-release-version`: e.g., `0.1.1-SNAPSHOT`
+. Click "Run workflow"
+. The workflow will:
+  - Update version.properties
+  - Commit and push changes (creating the tag)
+  - Build and publish to GitHub Packages
+  - Upload JAR to GitHub Releases
+
+==== Option 3: Push a Git Tag
 
 [source,shell]
 ----
@@ -292,11 +308,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ----
 
-The `Publish Release` workflow will trigger on the tag push.
-
-==== Option 3: Manual Trigger
-
-Navigate to https://github.com/cavarest/rcon/actions/workflows/publish-release.yml[Publish Release workflow] and click "Run workflow".
+The `Release` workflow will trigger automatically.
 
 === GitHub Actions Workflows
 
@@ -310,11 +322,7 @@ The project includes the following CI/CD workflows:
 
 | Integration Tests | On push to main | Tests against Minecraft Paper 1.21.8 server
 
-| Publish Release | On release creation, git tag push, or manual | Builds and publishes to GitHub Packages
-
-| Trigger Release | Manual | Provides a simple button to create a release
-
-| Dependency Submission | On push to main | Submits dependencies to GitHub Dependency Insights
+| Release | Manual, git tag, or GitHub release | Builds, publishes to GitHub Packages, and uploads JAR to GitHub Releases
 |===
 
 === Version Management
