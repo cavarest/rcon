@@ -46,8 +46,6 @@ jobs:
           --health-timeout 10s
           --health-retries 15
           --health-start-period 120s
-        volumes:
-          - minecraft-data:/data
 
     steps:
     - name: Checkout code
@@ -141,6 +139,3 @@ jobs:
         echo "🛑 Stopping Minecraft server container..."
         docker stop $(docker ps -q --filter ancestor=itzg/minecraft-server) 2>/dev/null || true
         docker rm $(docker ps -aq --filter ancestor=itzg/minecraft-server) 2>/dev/null || true
-
-volumes:
-  minecraft-data:
