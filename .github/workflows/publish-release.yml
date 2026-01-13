@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       release-version:
-        description: 'The version to release (e.g., 0.1.0)'
+        description: 'The version to release (e.g., 0.2.0)'
         type: string
         required: true
       post-release-version:
-        description: 'Next development version (e.g., 0.1.1-SNAPSHOT)'
+        description: 'Next development version (e.g., 0.2.1-SNAPSHOT)'
         type: string
         required: true
   release:
@@ -41,16 +41,6 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Configure Git
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -73,25 +63,26 @@ jobs:
         run: |
           ./gradlew postRelease -PpostReleaseVersion=${{ github.event.inputs.post-release-version }}
 
-      - name: Push release changes
+      - name: Push release changes and tags
         if: github.event_name == 'workflow_dispatch'
         run: |
-          git push
-          git push origin ${{ github.event.inputs.release-version }}
+          git push origin main
+          git push origin v${{ github.event.inputs.release-version }}
 
       - name: Get version from tag
-        if: github.event_name == 'push' || github.event_name == 'release'
+        if: github.event_name == 'push'
         id: version
         run: |
+          # Remove 'v' prefix from tag if present
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
 
       - name: Upload JAR to GitHub Release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/libs/cavarest-rcon-*.jar
+          files: build/libs/cavarest-rcon-${{ steps.version.outputs.version }}.jar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
