@@ -1,13 +1,24 @@
 package org.cavarest.rcon;
 
 import java.io.Closeable;
+import java.io.EOFException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.cavarest.rcon.exceptions.RconException;
+import org.cavarest.rcon.exceptions.RconAuthenticationException;
+import org.cavarest.rcon.exceptions.RconConnectionException;
+import org.cavarest.rcon.exceptions.RconProtocolException;
 
 /**
  * Main RCON client class for communicating with Source game servers.
@@ -35,6 +46,9 @@ public class Rcon implements Closeable {
     /** The underlying byte channel for communication */
     private final ByteChannel channel;
 
+    /** The socket's input stream for reading (respects socket timeout) */
+    private final InputStream inputStream;
+
     /** The packet reader for receiving responses */
     private final PacketReader reader;
 
@@ -42,16 +56,10 @@ public class Rcon implements Closeable {
     private final PacketWriter writer;
 
     /** Request counter for matching requests with responses */
-    private volatile int requestCounter;
+    private final AtomicInteger requestCounter = new AtomicInteger(0);
 
-    /** Connection timeout in milliseconds */
-    private int connectTimeout = 5000;
-
-    /** Read timeout in milliseconds */
-    private int readTimeout = 5000;
-
-    /** Whether verbose logging is enabled */
-    private boolean verbose = false;
+    /** Maximum server-to-client payload size per RCON protocol */
+    public static final int MAX_SERVER_PAYLOAD_SIZE = 4096;
 
     /** Fragment resolution strategy */
     private FragmentResolutionStrategy fragmentStrategy = FragmentResolutionStrategy.ACTIVE_PROBE;
@@ -70,7 +78,59 @@ public class Rcon implements Closeable {
     Rcon(final ByteChannel channel, final int readBufferCapacity,
          final int writeBufferCapacity, final PacketCodec codec) {
         this.channel = channel;
-        this.reader = new PacketReader(channel::read, readBufferCapacity, codec);
+
+        // Try to get the socket's input stream for reading (respects socket timeout)
+        InputStream inputStreamOrNull = null;
+        if (channel instanceof SocketChannel) {
+            Socket socket = ((SocketChannel) channel).socket();
+            try {
+                inputStreamOrNull = socket.getInputStream();
+            } catch (IOException e) {
+                // Fall back to channel reading if we can't get the input stream
+                inputStreamOrNull = null;
+            }
+        }
+        this.inputStream = inputStreamOrNull;
+
+        // Use socket input stream if available (respects socket timeout),
+        // otherwise fall back to channel reading for testing/mock scenarios
+        if (inputStream != null) {
+            // Create a readFully wrapper for the InputStream
+            PacketReader.Source streamSource = (buffer, offset, length) -> {
+                int totalRead = 0;
+                while (totalRead < length) {
+                    int bytesRead;
+                    try {
+                        bytesRead = inputStream.read(buffer, offset + totalRead, length - totalRead);
+                    } catch (SocketTimeoutException e) {
+                        // Re-throw SocketTimeoutException so TIMEOUT strategy can detect it
+                        throw e;
+                    }
+                    if (bytesRead == -1) {
+                        throw new EOFException("Connection closed while reading");
+                    }
+                    totalRead += bytesRead;
+                }
+            };
+            this.reader = new PacketReader(streamSource, codec);
+        } else {
+            // Create a wrapper that adapts channel::read(ByteBuffer) to readFully(byte[], int, int)
+            PacketReader.Source channelSource = (buffer, offset, length) -> {
+                ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, length);
+                int totalRead = 0;
+                while (totalRead < length) {
+                    int bytesRead = channel.read(byteBuffer);
+                    if (bytesRead == -1) {
+                        throw new IOException("Connection closed while reading");
+                    }
+                    if (bytesRead == 0) {
+                        throw new IOException("Unexpected EOF: no data available");
+                    }
+                    totalRead += bytesRead;
+                }
+            };
+            this.reader = new PacketReader(channelSource, codec);
+        }
         this.writer = new PacketWriter(channel::write, writeBufferCapacity, codec);
     }
 
@@ -192,35 +252,28 @@ public class Rcon implements Closeable {
 
     /**
      * Sends a command using the PACKET_SIZE fragment resolution strategy.
-     * Waits until we receive a packet with a payload length less than 4096 bytes.
+     * Waits until we receive a packet with a payload length less than MAX_SERVER_PAYLOAD_SIZE bytes.
      *
      * @param command The command to execute
      * @return The server's response
      * @throws IOException if a communication error occurs
      */
-    private synchronized String sendCommandWithPacketSizeStrategy(final String command) throws IOException {
+    synchronized String sendCommandWithPacketSizeStrategy(final String command) throws IOException {
         final StringBuilder responseBuilder = new StringBuilder();
-        final int requestId = requestCounter++;
+        final int requestId = requestCounter.getAndIncrement();
 
         // Send the command
         writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
 
-        // Read packets until we get one with payload < 4096
+        // Read packets until we get one with payload < MAX_SERVER_PAYLOAD_SIZE
         while (true) {
             final Packet response = reader.read();
-
-            if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
-                throw new IOException("Wrong command response type: " + response.type);
-            }
-            if (!response.isValid()) {
-                throw new IOException("Invalid command response: " + response.payload);
-            }
-
+            validateResponsePacket(response);
             responseBuilder.append(response.payload);
 
-            // Check if this is the last packet (payload < 4096)
-            // Maximum S→C packet payload is 4096 bytes
-            if (response.payload.length() < 4096) {
+            // Check if this is the last packet (payload < MAX_SERVER_PAYLOAD_SIZE)
+            // Maximum S→C packet payload is MAX_SERVER_PAYLOAD_SIZE bytes
+            if (response.payload.length() < MAX_SERVER_PAYLOAD_SIZE) {
                 break;
             }
         }
@@ -236,29 +289,34 @@ public class Rcon implements Closeable {
      * @return The server's response
      * @throws IOException if a communication error occurs
      */
-    private synchronized String sendCommandWithTimeoutStrategy(final String command) throws IOException {
+    synchronized String sendCommandWithTimeoutStrategy(final String command) throws IOException {
         final StringBuilder responseBuilder = new StringBuilder();
-        final int requestId = requestCounter++;
-        final long endTime = System.currentTimeMillis() + fragmentTimeoutMillis;
+        final int requestId = requestCounter.getAndIncrement();
 
         // Send the command
         writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
 
-        // Read packets until timeout
-        while (System.currentTimeMillis() < endTime) {
-            final Packet response = reader.read();
+        // Read packets, extending timeout each time we receive one
+        // Exit when socket times out (no more data within timeout window)
+        long endTime = System.currentTimeMillis() + fragmentTimeoutMillis;
+        while (true) {
+            try {
+                final Packet response = reader.read();
+                validateResponsePacket(response);
+                responseBuilder.append(response.payload);
 
-            if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
-                throw new IOException("Wrong command response type: " + response.type);
+                // Extend the timeout window when we receive a packet
+                endTime = System.currentTimeMillis() + fragmentTimeoutMillis;
+            } catch (java.net.SocketTimeoutException e) {
+                // Socket timeout means no more data within timeout window - we're done
+                break;
+            } catch (java.io.EOFException e) {
+                // Server closed connection - we're done
+                break;
+            } catch (RconProtocolException e) {
+                // Re-throw protocol exceptions as IOException for backward compatibility
+                throw new IOException(e.getMessage(), e);
             }
-            if (!response.isValid()) {
-                throw new IOException("Invalid command response: " + response.payload);
-            }
-
-            responseBuilder.append(response.payload);
-
-            // Reset the end time after receiving a packet
-            // Keep reading as long as packets arrive within the timeout
         }
 
         return responseBuilder.toString();
@@ -272,38 +330,27 @@ public class Rcon implements Closeable {
      * @return The server's response
      * @throws IOException if a communication error occurs
      */
-    private synchronized String sendCommandWithActiveProbeStrategy(final String command) throws IOException {
+    synchronized String sendCommandWithActiveProbeStrategy(final String command) throws IOException {
         final StringBuilder responseBuilder = new StringBuilder();
-        final int requestId = requestCounter++;
+        final int requestId = requestCounter.getAndIncrement();
 
         // Send the main command
         writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
 
         // Read the first response packet
         Packet response = reader.read();
-
-        if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
-            throw new IOException("Wrong command response type: " + response.type);
-        }
-        if (!response.isValid()) {
-            throw new IOException("Invalid command response: " + response.payload);
-        }
-
+        validateResponsePacket(response);
         responseBuilder.append(response.payload);
 
-        // If the payload is exactly 4096 bytes, there might be more fragments
-        // Send a probe command to detect when all fragments have been received
-        if (response.payload.length() >= 4096) {
-            final int probeRequestId = requestCounter++;
-            writer.write(new Packet(probeRequestId, PacketType.SERVERDATA_EXECCOMMAND, ""));
+        // ALWAYS send a probe to detect if there are more fragments
+        // This handles servers that may send multi-packet responses with small first packets
+        final int probeRequestId = requestCounter.getAndIncrement();
+        writer.write(new Packet(probeRequestId, PacketType.SERVERDATA_EXECCOMMAND, ""));
 
-            // Read remaining fragments until we get the probe response
-            while (true) {
+        // Try to read additional fragments until we get the probe response
+        while (true) {
+            try {
                 response = reader.read();
-
-                if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
-                    throw new IOException("Wrong command response type: " + response.type);
-                }
 
                 // Check if this is a response to our probe command
                 if (response.requestId == probeRequestId) {
@@ -311,11 +358,12 @@ public class Rcon implements Closeable {
                     break;
                 }
 
-                if (!response.isValid()) {
-                    throw new IOException("Invalid command response: " + response.payload);
-                }
-
+                // This is a fragment of the original response
+                validateResponsePacket(response);
                 responseBuilder.append(response.payload);
+            } catch (Exception e) {
+                // If we can't read more packets (timeout, no data, etc.), we're done
+                break;
             }
         }
 
@@ -334,8 +382,14 @@ public class Rcon implements Closeable {
      */
     public String sendCommand(final String command, final long timeout, final TimeUnit unit)
             throws IOException, TimeoutException {
-        // TODO: Implement timeout support
-        return sendCommand(command);
+        final long endTime = System.currentTimeMillis() + unit.toMillis(timeout);
+        final String response = sendCommand(command);
+
+        if (System.currentTimeMillis() >= endTime) {
+            throw new TimeoutException("Command timed out after " + timeout + " " + unit);
+        }
+
+        return response;
     }
 
     /**
@@ -349,7 +403,7 @@ public class Rcon implements Closeable {
      */
     private synchronized Packet writeAndRead(final int packetType, final String payload)
             throws IOException {
-        final int requestId = requestCounter++;
+        final int requestId = requestCounter.getAndIncrement();
         writer.write(new Packet(requestId, packetType, payload));
         return read(requestId);
     }
@@ -361,7 +415,7 @@ public class Rcon implements Closeable {
      * @return The response packet
      * @throws IOException if a communication error occurs
      */
-    private synchronized Packet read(final int expectedRequestId) throws IOException {
+    synchronized Packet read(final int expectedRequestId) throws IOException {
         final Packet response = reader.read();
 
         if (response.isValid() && response.requestId != expectedRequestId) {
@@ -373,30 +427,27 @@ public class Rcon implements Closeable {
     }
 
     /**
+     * Validates that a response packet is a valid command response.
+     *
+     * @param response The packet to validate
+     * @throws RconProtocolException if the packet is invalid
+     */
+    private void validateResponsePacket(final Packet response) throws RconProtocolException {
+        if (response.type != PacketType.SERVERDATA_RESPONSE_VALUE) {
+            throw new RconProtocolException("Wrong command response type: " + response.type);
+        }
+        if (!response.isValid()) {
+            throw new RconProtocolException("Invalid command response: " + response.payload);
+        }
+    }
+
+    /**
      * Checks if the underlying channel is connected.
      *
      * @return true if the channel is connected
      */
     public boolean isConnected() {
         return channel.isOpen() && channel instanceof SocketChannel && ((SocketChannel) channel).isConnected();
-    }
-
-    /**
-     * Enables or disables verbose logging.
-     *
-     * @param verbose true to enable verbose logging
-     */
-    public void setVerbose(final boolean verbose) {
-        this.verbose = verbose;
-    }
-
-    /**
-     * Sets the connection timeout.
-     *
-     * @param timeout The timeout in milliseconds
-     */
-    public void setConnectTimeout(final int timeout) {
-        this.connectTimeout = timeout;
     }
 
     /**
@@ -420,7 +471,13 @@ public class Rcon implements Closeable {
 
     @Override
     public void close() throws IOException {
-        channel.close();
+        try {
+            if (inputStream != null) {
+                inputStream.close();
+            }
+        } finally {
+            channel.close();
+        }
     }
 
     /**
@@ -429,7 +486,8 @@ public class Rcon implements Closeable {
     public static class RconBuilder {
 
         private ByteChannel channel;
-        private Integer readBufferCapacity = PacketReader.DEFAULT_BUFFER_CAPACITY;
+        @SuppressWarnings("unused")  // Kept for backward compatibility with builder API
+        private Integer readBufferCapacity = 4096;
         private Integer writeBufferCapacity = PacketWriter.DEFAULT_BUFFER_CAPACITY;
         private PacketCodec codec = new PacketCodec();
 

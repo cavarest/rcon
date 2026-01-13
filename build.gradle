@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'jacoco'
 }
 
 repositories {
@@ -27,11 +28,87 @@ test {
     useJUnitPlatform {
         excludeTags 'integration'
     }
+    finalizedBy jacocoTestReport
+}
+
+jacoco {
+    toolVersion = "0.8.11"
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.80
+            }
+        }
+    }
 }
 
 tasks.register('integrationTest', Test) {
     useJUnitPlatform {
         includeTags 'integration'
+    }
+    systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/integrationTest.exec').get().asFile
+    }
+    finalizedBy 'jacocoIntegrationTestReport'
+}
+
+// JaCoCo configuration for integration tests
+tasks.register('jacocoIntegrationTestReport', JacocoReport) {
+    dependsOn integrationTest
+    additionalSourceDirs.setFrom(files(sourceSets.main.allSource.srcDirs))
+    sourceDirectories.setFrom(files(sourceSets.main.allSource.srcDirs))
+    classDirectories.setFrom(files(sourceSets.main.output))
+    executionData.setFrom(layout.buildDirectory.file('jacoco/integrationTest.exec'))
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+// Task to merge unit and integration test coverage
+tasks.register('jacocoMergedReport', JacocoReport) {
+    dependsOn jacocoTestReport, jacocoIntegrationTestReport
+
+    additionalSourceDirs.setFrom(files(sourceSets.main.allSource.srcDirs))
+    sourceDirectories.setFrom(files(sourceSets.main.allSource.srcDirs))
+    classDirectories.setFrom(files(sourceSets.main.output))
+    executionData.setFrom(project.fileTree(dir: buildDir, includes: [
+        'jacoco/test.exec',
+        'jacoco/integrationTest.exec'
+    ]))
+
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+// Coverage verification on merged report
+tasks.register('jacocoMergedCoverageVerification', JacocoCoverageVerification) {
+    dependsOn jacocoMergedReport
+
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.80
+            }
+        }
     }
 }
 
