@@ -187,7 +187,7 @@ tasks.register('release') {
         // Commit version change
         exec { commandLine 'git', 'add', 'version.properties' }
         exec { commandLine 'git', 'commit', '-m', "chore(release): ${releaseVersion}" }
-        exec { commandLine 'git', 'tag', "-a", releaseVersion, '-m', "Release ${releaseVersion}" }
+        exec { commandLine 'git', 'tag', "-a", "v${releaseVersion}", '-m', "Release ${releaseVersion}" }
 
         println "Release ${releaseVersion} prepared."
         println "Next: Run postRelease task or update version.properties manually."
