@@ -188,6 +188,44 @@ class RconClientTest {
     }
 
     @Nested
+    @DisplayName("Fragment Resolution Strategy Tests")
+    class FragmentResolutionStrategyTests {
+
+        @Test
+        @DisplayName("Should set fragment resolution strategy")
+        void shouldSetFragmentResolutionStrategy() {
+            RconClient client = new RconClient("localhost", 25575, "password");
+            assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE));
+            assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT));
+            assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.ACTIVE_PROBE));
+        }
+    }
+
+    @Nested
+    @DisplayName("Fragment Timeout Tests")
+    class FragmentTimeoutTests {
+
+        @Test
+        @DisplayName("Should set fragment timeout")
+        void shouldSetFragmentTimeout() {
+            RconClient client = new RconClient("localhost", 25575, "password");
+            assertDoesNotThrow(() -> client.setFragmentTimeout(100, java.util.concurrent.TimeUnit.MILLISECONDS));
+        }
+    }
+
+    @Nested
+    @DisplayName("Send Command with Strategy Tests")
+    class SendCommandWithStrategyTests {
+
+        @Test
+        @DisplayName("sendCommand() with strategy should throw when not connected")
+        void sendCommandWithStrategyShouldThrowWhenNotConnected() {
+            RconClient client = new RconClient("localhost", 25575, "password");
+            assertThrows(IOException.class, () -> client.sendCommand("test", FragmentResolutionStrategy.ACTIVE_PROBE));
+        }
+    }
+
+    @Nested
     @DisplayName("toString Tests")
     class ToStringTests {
 

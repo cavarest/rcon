@@ -7,20 +7,17 @@ import java.nio.ByteOrder;
 
 /**
  * Reads and decodes RCON packets from a data source.
- * 
+ *
  * This class handles the low-level reading of packet data from a socket channel,
- * managing a receive buffer and decoding complete packets.
- * 
+ * using simple blocking reads to ensure complete packets are received.
+ *
  * The read operation is blocking and will wait for sufficient data to be available
- * before returning a decoded packet.
- * 
+ * before returning a decoded packet. Each read processes exactly one complete packet.
+ *
  * @see PacketCodec
  * @see Packet
  */
 public class PacketReader {
-
-    /** Default read buffer capacity (4 KB) */
-    public static final int DEFAULT_BUFFER_CAPACITY = 4096;
 
     /** The data source for reading packet bytes */
     private final Source source;
@@ -28,46 +25,32 @@ public class PacketReader {
     /** The codec for decoding packets */
     private final PacketCodec codec;
 
-    /** The receive buffer for storing incoming data */
-    private final ByteBuffer buffer;
-
     /**
      * Functional interface for reading bytes from a data source.
      */
     @FunctionalInterface
     public interface Source {
         /**
-         * Reads bytes into the provided buffer.
+         * Reads exactly the specified number of bytes into the buffer.
+         * This method should block until all bytes are read or throw an exception.
          *
-         * @param destination The buffer to read into
-         * @return The number of bytes read, or -1 if end of stream
-         * @throws IOException if a read error occurs
+         * @param buffer The buffer to read into
+         * @param offset The offset in the buffer to start writing
+         * @param length The number of bytes to read
+         * @throws IOException if a read error occurs or end of stream is reached
          */
-        int read(ByteBuffer destination) throws IOException;
+        void readFully(byte[] buffer, int offset, int length) throws IOException;
     }
 
     /**
-     * Creates a new PacketReader with the specified source and buffer capacity.
-     *
-     * @param source The data source for reading packet bytes
-     * @param bufferCapacity The capacity of the receive buffer
-     * @param codec The codec for decoding packets
-     */
-    public PacketReader(final Source source, final int bufferCapacity, final PacketCodec codec) {
-        this.source = source;
-        this.codec = codec;
-        this.buffer = ByteBuffer.allocate(bufferCapacity)
-                .order(ByteOrder.LITTLE_ENDIAN);
-    }
-
-    /**
-     * Creates a new PacketReader with default buffer capacity.
+     * Creates a new PacketReader with the specified source and codec.
      *
      * @param source The data source for reading packet bytes
      * @param codec The codec for decoding packets
      */
     public PacketReader(final Source source, final PacketCodec codec) {
-        this(source, DEFAULT_BUFFER_CAPACITY, codec);
+        this.source = source;
+        this.codec = codec;
     }
 
     /**
@@ -78,57 +61,33 @@ public class PacketReader {
      * @throws IOException if a read error occurs or connection is closed
      */
     public Packet read() throws IOException {
-        // Read the packet length first (4 bytes)
-        readUntilAvailable(Integer.BYTES);
-        buffer.flip();
-        final int length = buffer.getInt();
-        buffer.compact();
+        // Read packet length (4 bytes) - little endian
+        byte[] lengthBytes = new byte[Integer.BYTES];
+        source.readFully(lengthBytes, 0, lengthBytes.length);
 
-        // Validate length
+        int length = ByteBuffer.wrap(lengthBytes)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .getInt();
+
+        // Validate length (minimum: requestId (4) + type (4) + null terminators (2))
         if (length < Integer.BYTES + Integer.BYTES + 2) {
             throw new IOException("Invalid packet length: " + length);
         }
 
-        // Read the complete packet
-        readUntilAvailable(length);
-        buffer.flip();
-        final Packet packet = codec.decode(buffer, length);
-        buffer.compact();
-
-        return packet;
-    }
-
-    /**
-     * Ensures that at least the specified number of bytes are available in the buffer.
-     * This method blocks until sufficient data is available.
-     *
-     * @param bytesAvailable The minimum number of bytes required
-     * @throws IOException if end of stream is reached before sufficient data
-     */
-    private void readUntilAvailable(final int bytesAvailable) throws IOException {
-        while (buffer.position() < bytesAvailable) {
-            int bytesRead = source.read(buffer);
-            if (bytesRead == -1) {
-                throw new EOFException("Connection closed while reading packet data");
-            }
+        // Validate maximum length (prevent memory exhaustion attacks)
+        // The length field includes: requestId (4) + type (4) + payload + nulls (2)
+        int maxPayloadLength = Rcon.MAX_SERVER_PAYLOAD_SIZE + Integer.BYTES + Integer.BYTES + 2;
+        if (length > maxPayloadLength) {
+            throw new IOException("Packet length exceeds maximum: " + length + " > " + maxPayloadLength);
         }
-    }
 
-    /**
-     * Gets the current buffer capacity.
-     *
-     * @return The buffer capacity in bytes
-     */
-    public int getBufferCapacity() {
-        return buffer.capacity();
-    }
+        // Read the full packet (requestId + type + payload + null terminators)
+        byte[] packetBytes = new byte[length];
+        source.readFully(packetBytes, 0, packetBytes.length);
 
-    /**
-     * Gets the current buffer position.
-     *
-     * @return The current buffer position
-     */
-    public int getBufferPosition() {
-        return buffer.position();
+        // Decode packet from bytes
+        ByteBuffer buffer = ByteBuffer.wrap(packetBytes)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        return codec.decode(buffer, length);
     }
 }

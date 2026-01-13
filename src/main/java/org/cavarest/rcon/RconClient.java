@@ -3,6 +3,9 @@ package org.cavarest.rcon;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -169,11 +172,11 @@ public class RconClient implements Closeable {
      * @throws IOException if a communication error occurs
      */
     public String sendCommand(final String command, final String... args) throws IOException {
-        String fullCommand = command;
+        StringBuilder fullCommand = new StringBuilder(command);
         for (String arg : args) {
-            fullCommand += " " + arg;
+            fullCommand.append(" ").append(arg);
         }
-        return sendCommand(fullCommand);
+        return sendCommand(fullCommand.toString());
     }
 
     /**
@@ -209,9 +212,6 @@ public class RconClient implements Closeable {
      */
     public void setVerbose(final boolean verbose) {
         this.verbose = verbose;
-        if (rcon != null) {
-            rcon.setVerbose(verbose);
-        }
     }
 
     /**
@@ -253,16 +253,18 @@ public class RconClient implements Closeable {
 
     @Override
     public void close() throws IOException {
-        if (connected && rcon != null) {
+        if (rcon != null) {
             log(Level.INFO, "Closing RCON connection");
             try {
                 rcon.close();
             } catch (IOException e) {
                 log(Level.WARNING, "Error closing connection: " + e.getMessage());
+            } finally {
+                // Ensure state is always updated, even if close() throws
+                rcon = null;
+                connected = false;
+                log(Level.INFO, "RCON connection closed");
             }
-            rcon = null;
-            connected = false;
-            log(Level.INFO, "RCON connection closed");
         }
     }
 
@@ -284,8 +286,204 @@ public class RconClient implements Closeable {
         return port;
     }
 
+    /**
+     * Asynchronously sends a command to the server.
+     * Uses the default fragment resolution strategy (ACTIVE_PROBE).
+     *
+     * @param command The command to execute
+     * @return A CompletableFuture that will complete with the server's response
+     */
+    public CompletableFuture<String> sendCommandAsync(final String command) {
+        return sendCommandAsync(command, ForkJoinPool.commonPool());
+    }
+
+    /**
+     * Asynchronously sends a command to the server with a custom executor.
+     *
+     * @param command The command to execute
+     * @param executor The executor to use for async execution
+     * @return A CompletableFuture that will complete with the server's response
+     */
+    public CompletableFuture<String> sendCommandAsync(final String command, final Executor executor) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return sendCommand(command);
+            } catch (IOException e) {
+                throw new RuntimeException("Async command failed", e);
+            }
+        }, executor);
+    }
+
+    /**
+     * Asynchronously connects to the RCON server.
+     *
+     * @return A CompletableFuture that will complete when connected
+     */
+    public CompletableFuture<Void> connectAsync() {
+        return connectAsync(ForkJoinPool.commonPool());
+    }
+
+    /**
+     * Asynchronously connects to the RCON server with a custom executor.
+     *
+     * @param executor The executor to use for async execution
+     * @return A CompletableFuture that will complete when connected
+     */
+    public CompletableFuture<Void> connectAsync(final Executor executor) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                connect();
+            } catch (IOException e) {
+                throw new RuntimeException("Async connection failed", e);
+            }
+        }, executor);
+    }
+
     @Override
     public String toString() {
         return String.format("RconClient{host=%s, port=%d, connected=%s}", host, port, connected);
+    }
+
+    /**
+     * Builder class for creating RconClient instances with custom configuration.
+     */
+    public static class Builder {
+        private String host;
+        private Integer port;
+        private String password;
+        private Integer connectTimeout = DEFAULT_CONNECT_TIMEOUT;
+        private Integer commandTimeout = DEFAULT_COMMAND_TIMEOUT;
+        private Boolean verbose = false;
+        private FragmentResolutionStrategy fragmentStrategy = FragmentResolutionStrategy.ACTIVE_PROBE;
+        private Long fragmentTimeoutMillis = 100L;
+
+        /**
+         * Sets the hostname of the RCON server.
+         *
+         * @param host The server hostname
+         * @return This builder for chaining
+         */
+        public Builder withHost(final String host) {
+            this.host = host;
+            return this;
+        }
+
+        /**
+         * Sets the port of the RCON server.
+         *
+         * @param port The RCON port
+         * @return This builder for chaining
+         */
+        public Builder withPort(final int port) {
+            this.port = port;
+            return this;
+        }
+
+        /**
+         * Sets the RCON password.
+         *
+         * @param password The RCON password
+         * @return This builder for chaining
+         */
+        public Builder withPassword(final String password) {
+            this.password = password;
+            return this;
+        }
+
+        /**
+         * Sets the connection timeout.
+         *
+         * @param connectTimeout The timeout in milliseconds
+         * @return This builder for chaining
+         */
+        public Builder withConnectTimeout(final int connectTimeout) {
+            this.connectTimeout = connectTimeout;
+            return this;
+        }
+
+        /**
+         * Sets the command timeout.
+         *
+         * @param commandTimeout The timeout in milliseconds
+         * @return This builder for chaining
+         */
+        public Builder withCommandTimeout(final int commandTimeout) {
+            this.commandTimeout = commandTimeout;
+            return this;
+        }
+
+        /**
+         * Enables or disables verbose logging.
+         *
+         * @param verbose true to enable verbose logging
+         * @return This builder for chaining
+         */
+        public Builder withVerbose(final boolean verbose) {
+            this.verbose = verbose;
+            return this;
+        }
+
+        /**
+         * Sets the fragment resolution strategy.
+         *
+         * @param strategy The strategy to use
+         * @return This builder for chaining
+         */
+        public Builder withFragmentStrategy(final FragmentResolutionStrategy strategy) {
+            this.fragmentStrategy = strategy;
+            return this;
+        }
+
+        /**
+         * Sets the fragment timeout.
+         *
+         * @param timeout The timeout value
+         * @param unit The time unit for the timeout
+         * @return This builder for chaining
+         */
+        public Builder withFragmentTimeout(final long timeout, final java.util.concurrent.TimeUnit unit) {
+            this.fragmentTimeoutMillis = unit.toMillis(timeout);
+            return this;
+        }
+
+        /**
+         * Builds and returns the RconClient instance.
+         *
+         * @return A new RconClient instance
+         * @throws IllegalArgumentException if required parameters are missing
+         */
+        public RconClient build() {
+            if (host == null) {
+                throw new IllegalArgumentException("host must be specified");
+            }
+            if (password == null) {
+                throw new IllegalArgumentException("password must be specified");
+            }
+
+            RconClient client = new RconClient(
+                host,
+                port != null ? port : DEFAULT_PORT,
+                password,
+                connectTimeout,
+                commandTimeout
+            );
+
+            client.setVerbose(verbose);
+            client.setFragmentResolutionStrategy(fragmentStrategy);
+            if (fragmentTimeoutMillis != null) {
+                client.setFragmentTimeout(fragmentTimeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+            }
+
+            return client;
+        }
+    }
+
+    /**
+     * Creates a new builder for configuring an RconClient instance.
+     *
+     * @return A new Builder instance
+     */
+    public static Builder builder() {
+        return new Builder();
     }
 }

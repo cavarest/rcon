@@ -1,0 +1,36 @@
+# Docker Compose for Alternative Minecraft Server RCON Testing
+# Uses Vanilla server (not Paper) which may have different response truncation behavior
+# Uses older version (1.20.4) which might not truncate as aggressively
+
+services:
+  minecraft:
+    image: itzg/minecraft-server
+    container_name: cavarest-rcon-minecraft-alt
+    ports:
+      - "35575:25575"   # RCON port (same as primary)
+      - "35565:25565"   # Minecraft server port
+    environment:
+      - EULA=TRUE
+      - ONLINE_MODE=false
+      - TYPE=VANILLA
+      - VERSION=1.20.4
+      - RCON_PASSWORD=cavarest
+      - ENABLE_RCON=true
+      - MAX_PLAYERS=5
+      - MEMORY=512M
+      - SPAWN_PROTECTION=0
+      - DEBUG=false
+      # Try to increase RCON response size if possible
+      - VIEW_DISTANCE=10
+    volumes:
+      - minecraft-data-alt:/data
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      interval: 30s
+      timeout: 10s
+      retries:15
+      start_period: 120s
+    stop_grace_period: 30s
+
+volumes:
+  minecraft-data-alt:

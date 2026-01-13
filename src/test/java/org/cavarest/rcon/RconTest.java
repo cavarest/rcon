@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
@@ -97,22 +98,6 @@ class RconTest {
     class TimeoutConfigurationTests {
 
         @Test
-        @DisplayName("Should set connect timeout")
-        void shouldSetConnectTimeout() throws IOException {
-            SocketChannel channel = SocketChannel.open();
-            channel.configureBlocking(true);
-            try {
-                Rcon rcon = Rcon.newBuilder()
-                        .withChannel(channel)
-                        .build();
-                rcon.setConnectTimeout(10000);
-                rcon.close();
-            } finally {
-                channel.close();
-            }
-        }
-
-        @Test
         @DisplayName("Should set fragment timeout")
         void shouldSetFragmentTimeout() throws IOException {
             SocketChannel channel = SocketChannel.open();
@@ -122,28 +107,6 @@ class RconTest {
                         .withChannel(channel)
                         .build();
                 rcon.setFragmentTimeout(100, TimeUnit.MILLISECONDS);
-                rcon.close();
-            } finally {
-                channel.close();
-            }
-        }
-    }
-
-    @Nested
-    @DisplayName("Verbose Mode Tests")
-    class VerboseModeTests {
-
-        @Test
-        @DisplayName("Should enable verbose mode")
-        void shouldEnableVerboseMode() throws IOException {
-            SocketChannel channel = SocketChannel.open();
-            channel.configureBlocking(true);
-            try {
-                Rcon rcon = Rcon.newBuilder()
-                        .withChannel(channel)
-                        .build();
-                rcon.setVerbose(true);
-                assertDoesNotThrow(() -> rcon.setVerbose(false));
                 rcon.close();
             } finally {
                 channel.close();
@@ -228,6 +191,69 @@ class RconTest {
                     .build();
 
             assertFalse(rcon.isConnected());
+        }
+
+        @Test
+        @DisplayName("Should return false for non-SocketChannel")
+        void shouldReturnFalseForNonSocketChannel() throws IOException {
+            MockByteChannel mockChannel = new MockByteChannel();
+
+            Rcon rcon = Rcon.newBuilder()
+                    .withChannel(mockChannel)
+                    .build();
+
+            assertFalse(rcon.isConnected());
+        }
+    }
+
+    @Nested
+    @DisplayName("Fragment Resolution Strategy Tests")
+    class FragmentResolutionStrategyTests {
+
+        @Test
+        @DisplayName("Should set fragment resolution strategy")
+        void shouldSetFragmentResolutionStrategy() throws IOException {
+            SocketChannel channel = SocketChannel.open();
+            channel.configureBlocking(true);
+            try {
+                Rcon rcon = Rcon.newBuilder()
+                        .withChannel(channel)
+                        .build();
+
+                assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE));
+                assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT));
+                assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.ACTIVE_PROBE));
+                rcon.close();
+            } finally {
+                channel.close();
+            }
+        }
+    }
+
+    /**
+     * Mock ByteChannel for testing.
+     */
+    private static class MockByteChannel implements java.nio.channels.ByteChannel {
+        private boolean open = true;
+
+        @Override
+        public int read(ByteBuffer dst) throws IOException {
+            return 0;
+        }
+
+        @Override
+        public int write(ByteBuffer src) throws IOException {
+            return src.remaining();
+        }
+
+        @Override
+        public boolean isOpen() {
+            return open;
+        }
+
+        @Override
+        public void close() throws IOException {
+            open = false;
         }
     }
 }
