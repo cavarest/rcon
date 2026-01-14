@@ -220,7 +220,6 @@ class RconTest {
                         .withChannel(channel)
                         .build();
 
-                assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE));
                 assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT));
                 assertDoesNotThrow(() -> rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.ACTIVE_PROBE));
                 rcon.close();

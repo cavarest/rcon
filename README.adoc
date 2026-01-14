@@ -92,7 +92,7 @@ src/main/java/org/cavarest/rcon/
 [source,groovy]
 ----
 dependencies {
-    implementation 'org.cavarest:cavarest-rcon:0.1.0'
+    implementation 'org.cavarest:cavarest-rcon:0.2.1-SNAPSHOT'
 }
 ----
 
@@ -103,7 +103,7 @@ dependencies {
 ./gradlew build
 ----
 
-The JAR file will be generated at `build/libs/cavarest-rcon-0.1.0.jar`.
+The JAR file will be generated at `build/libs/cavarest-rcon-{version}.jar`.
 
 === Requirements
 
@@ -276,42 +276,46 @@ Maximum payload sizes are:
 * Client to Server: 1446 bytes
 * Server to Client: 4096 bytes
 
-The library implements fragment resolution logic that automatically assembles multi-packet responses when a server response exceeds 4096 bytes.
+==== Automatic Multi-Packet Handling
 
-[NOTE]
-====
-Multi-packet response handling has been verified using the exponential duplication technique.
-Testing with 512 entities generates responses exceeding 87,000 bytes across ~22 packets, confirming all three
-fragment resolution strategies (ACTIVE_PROBE, PACKET_SIZE, TIMEOUT) work correctly with Paper 1.21.8.
+The library automatically handles multi-packet responses - no configuration required.
 
-The technique uses `/execute as @e[tag=X] run data get entity @s` which runs the command FOR EACH ENTITY,
-generating massive multi-packet responses that demonstrate the fragment resolution logic works as designed.
-====
-
-==== Fragment Resolution Strategies
-
-The library supports three strategies for detecting when all fragments have been received:
-
-* **ACTIVE_PROBE** (default): Sends an empty command probe to detect the end of the response. Most reliable across all server implementations.
-* **PACKET_SIZE**: Assumes response is complete when a packet smaller than 4096 bytes is received. Works with most servers but not 100% reliable.
-* **TIMEOUT**: Waits for a fixed timeout period after the last packet. Reliable but adds latency.
+When a Minecraft server returns a response exceeding 4096 bytes, the library reads all packets and assembles the complete response transparently. You do not need to configure anything.
 
 [source,java]
 ----
 import org.cavarest.rcon.RconClient;
-import org.cavarest.rcon.Rcon;
+
+// Just use the library normally - multi-packet is automatic
+try (RconClient client = new RconClient("localhost", 25575, "password")) {
+    client.connect();
+    String response = client.sendCommand("data get entity @e");  // Handles multi-packet automatically
+    System.out.println("Full response received: " + response.length() + " bytes");
+}
+----
+
+[NOTE]
+====
+Multi-packet response handling has been verified with responses exceeding 87,000 bytes across ~22 packets.
+The library automatically reads all fragments and returns the complete response regardless of size.
+====
+
+==== Advanced: Fragment Resolution Strategies
+
+The library uses the `ACTIVE_PROBE` strategy by default, which is reliable across all server implementations. For advanced use cases, you can customize the fragment resolution strategy:
+
+* **ACTIVE_PROBE** (default): Sends an empty command probe to detect the end of the response. Most reliable across all server implementations.
+* **TIMEOUT**: Waits for a fixed timeout period after the last packet. Use this for faster detection when server response time is predictable.
+
+[source,java]
+----
+import org.cavarest.rcon.RconClient;
 import org.cavarest.rcon.FragmentResolutionStrategy;
 
-// Set fragment resolution strategy
+// Advanced: Customize fragment resolution strategy (only if needed)
 RconClient client = new RconClient("localhost", 25575, "password");
-client.setFragmentResolutionStrategy(FragmentResolutionStrategy.ACTIVE_PROBE);
-
-// Or use the low-level API
-Rcon rcon = Rcon.connect("localhost", 25575);
-rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT);
-rcon.setTimeoutMillis(5000);
-rcon.authenticate("password");
-String response = rcon.sendCommand("help");  // Handles multi-packet responses
+client.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT);
+client.connect();
 ----
 
 === Character Encoding
@@ -421,7 +425,7 @@ Releases are automated using GitHub Actions. To create a release:
 ==== Option 1: GitHub Release UI (Recommended)
 
 . Go to https://github.com/cavarest/rcon/releases/new[new release page]
-. Create a new tag (e.g., `v0.1.0`)
+. Create a new tag (e.g., `v0.2.0`)
 . Add release notes (optional)
 . Click "Publish release"
 . The `Release` workflow will automatically:
@@ -434,8 +438,8 @@ Releases are automated using GitHub Actions. To create a release:
 . Navigate to https://github.com/cavarest/rcon/actions/workflows/publish-release.yml[Release workflow]
 . Click "Run workflow"
 . Enter:
-  - `release-version`: e.g., `0.1.0`
-  - `post-release-version`: e.g., `0.1.1-SNAPSHOT`
+  - `release-version`: e.g., `0.2.0`
+  - `post-release-version`: e.g., `0.2.1-SNAPSHOT`
 . Click "Run workflow"
 . The workflow will:
   - Update version.properties
@@ -448,8 +452,8 @@ Releases are automated using GitHub Actions. To create a release:
 [source,shell]
 ----
 # Create and push a version tag
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ----
 
 The `Release` workflow will trigger automatically.

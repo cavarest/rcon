@@ -102,25 +102,6 @@ class RconAdditionalTest {
     }
 
     @Nested
-    @DisplayName("Packet Size Strategy Tests")
-    class PacketSizeStrategyTests {
-
-        @Test
-        @DisplayName("Should attempt sendCommand with PACKET_SIZE strategy")
-        void shouldAttemptSendCommandWithPacketSizeStrategy() throws Exception {
-            try (SocketChannel channel = SocketChannel.open()) {
-                channel.configureBlocking(true);
-                try (Rcon rcon = Rcon.newBuilder().withChannel(channel).build()) {
-                    rcon.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE);
-
-                    // This should throw because channel is not connected
-                    assertThrows(Exception.class, () -> rcon.sendCommand("test"));
-                }
-            }
-        }
-    }
-
-    @Nested
     @DisplayName("Timeout Strategy Tests")
     class TimeoutStrategyTests {
 
@@ -273,16 +254,14 @@ class RconAdditionalTest {
         @DisplayName("Should handle all strategy enum values")
         void shouldHandleAllStrategyEnumValues() {
             FragmentResolutionStrategy[] values = FragmentResolutionStrategy.values();
-            assertEquals(3, values.length);
-            assertEquals(FragmentResolutionStrategy.PACKET_SIZE, values[0]);
-            assertEquals(FragmentResolutionStrategy.TIMEOUT, values[1]);
-            assertEquals(FragmentResolutionStrategy.ACTIVE_PROBE, values[2]);
+            assertEquals(2, values.length);
+            assertEquals(FragmentResolutionStrategy.TIMEOUT, values[0]);
+            assertEquals(FragmentResolutionStrategy.ACTIVE_PROBE, values[1]);
         }
 
         @Test
         @DisplayName("Should have correct strategy names")
         void shouldHaveCorrectStrategyNames() {
-            assertEquals("PACKET_SIZE", FragmentResolutionStrategy.PACKET_SIZE.name());
             assertEquals("TIMEOUT", FragmentResolutionStrategy.TIMEOUT.name());
             assertEquals("ACTIVE_PROBE", FragmentResolutionStrategy.ACTIVE_PROBE.name());
         }
@@ -290,15 +269,13 @@ class RconAdditionalTest {
         @Test
         @DisplayName("Should handle strategy ordinal")
         void shouldHandleStrategyOrdinal() {
-            assertEquals(0, FragmentResolutionStrategy.PACKET_SIZE.ordinal());
-            assertEquals(1, FragmentResolutionStrategy.TIMEOUT.ordinal());
-            assertEquals(2, FragmentResolutionStrategy.ACTIVE_PROBE.ordinal());
+            assertEquals(0, FragmentResolutionStrategy.TIMEOUT.ordinal());
+            assertEquals(1, FragmentResolutionStrategy.ACTIVE_PROBE.ordinal());
         }
 
         @Test
         @DisplayName("valueOf should find correct strategy")
         void valueOfShouldFindCorrectStrategy() {
-            assertEquals(FragmentResolutionStrategy.PACKET_SIZE, FragmentResolutionStrategy.valueOf("PACKET_SIZE"));
             assertEquals(FragmentResolutionStrategy.TIMEOUT, FragmentResolutionStrategy.valueOf("TIMEOUT"));
             assertEquals(FragmentResolutionStrategy.ACTIVE_PROBE, FragmentResolutionStrategy.valueOf("ACTIVE_PROBE"));
         }

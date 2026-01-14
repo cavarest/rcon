@@ -240,45 +240,12 @@ public class Rcon implements Closeable {
         }
 
         switch (strategy) {
-            case PACKET_SIZE:
-                return sendCommandWithPacketSizeStrategy(command);
             case TIMEOUT:
                 return sendCommandWithTimeoutStrategy(command);
             case ACTIVE_PROBE:
             default:
                 return sendCommandWithActiveProbeStrategy(command);
         }
-    }
-
-    /**
-     * Sends a command using the PACKET_SIZE fragment resolution strategy.
-     * Waits until we receive a packet with a payload length less than MAX_SERVER_PAYLOAD_SIZE bytes.
-     *
-     * @param command The command to execute
-     * @return The server's response
-     * @throws IOException if a communication error occurs
-     */
-    synchronized String sendCommandWithPacketSizeStrategy(final String command) throws IOException {
-        final StringBuilder responseBuilder = new StringBuilder();
-        final int requestId = requestCounter.getAndIncrement();
-
-        // Send the command
-        writer.write(new Packet(requestId, PacketType.SERVERDATA_EXECCOMMAND, command));
-
-        // Read packets until we get one with payload < MAX_SERVER_PAYLOAD_SIZE
-        while (true) {
-            final Packet response = reader.read();
-            validateResponsePacket(response);
-            responseBuilder.append(response.payload);
-
-            // Check if this is the last packet (payload < MAX_SERVER_PAYLOAD_SIZE)
-            // Maximum S→C packet payload is MAX_SERVER_PAYLOAD_SIZE bytes
-            if (response.payload.length() < MAX_SERVER_PAYLOAD_SIZE) {
-                break;
-            }
-        }
-
-        return responseBuilder.toString();
     }
 
     /**
@@ -486,7 +453,12 @@ public class Rcon implements Closeable {
     public static class RconBuilder {
 
         private ByteChannel channel;
-        @SuppressWarnings("unused")  // Kept for backward compatibility with builder API
+        /**
+         * Read buffer capacity (reserved for future use).
+         * Currently unused - PacketReader dynamically allocates buffers as needed.
+         * Kept for API stability and backward compatibility.
+         */
+        @SuppressWarnings("unused")
         private Integer readBufferCapacity = 4096;
         private Integer writeBufferCapacity = PacketWriter.DEFAULT_BUFFER_CAPACITY;
         private PacketCodec codec = new PacketCodec();
@@ -505,7 +477,11 @@ public class Rcon implements Closeable {
         /**
          * Sets the read buffer capacity.
          *
-         * @param readBufferCapacity The capacity in bytes
+         * Note: This parameter is currently reserved for API compatibility and future use.
+         * The PacketReader dynamically allocates buffers as needed and does not use
+         * a fixed-capacity read buffer. This method is kept for API stability.
+         *
+         * @param readBufferCapacity The capacity in bytes (reserved, not currently used)
          * @return This builder for chaining
          */
         public RconBuilder withReadBufferCapacity(final int readBufferCapacity) {

@@ -195,7 +195,6 @@ class RconClientTest {
         @DisplayName("Should set fragment resolution strategy")
         void shouldSetFragmentResolutionStrategy() {
             RconClient client = new RconClient("localhost", 25575, "password");
-            assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE));
             assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.TIMEOUT));
             assertDoesNotThrow(() -> client.setFragmentResolutionStrategy(FragmentResolutionStrategy.ACTIVE_PROBE));
         }
