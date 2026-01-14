@@ -217,7 +217,19 @@ public class RconClient implements Closeable {
     /**
      * Sets the fragment resolution strategy for handling fragmented command responses.
      *
-     * @param strategy The strategy to use
+     * <p><b>NOTE:</b> For most users, the default {@link FragmentResolutionStrategy#ACTIVE_PROBE}
+     * is recommended and handles all multi-packet responses correctly. The library automatically
+     * assembles complete responses from multiple packets - you typically do not need to change this.
+     *
+     * <p>Only change this strategy if you have specific requirements:
+     * <ul>
+     *   <li>Working with non-standard RCON implementations</li>
+     *   <li>Needing faster timeout detection than ACTIVE_PROBE provides</li>
+     *   <li>Debugging packet-level behavior or server-specific issues</li>
+     * </ul>
+     *
+     * @param strategy The fragment resolution strategy to use
+     * @see FragmentResolutionStrategy
      */
     public void setFragmentResolutionStrategy(final FragmentResolutionStrategy strategy) {
         this.fragmentStrategy = strategy;

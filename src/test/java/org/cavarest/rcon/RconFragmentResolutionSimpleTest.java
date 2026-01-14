@@ -87,7 +87,7 @@ class RconFragmentResolutionSimpleTest {
                     boolean authResult = rcon.authenticate("test");
                     assertTrue(authResult, "Auth should succeed");
 
-                    String response = rcon.sendCommandWithPacketSizeStrategy("test");
+                    String response = rcon.sendCommand("test", FragmentResolutionStrategy.ACTIVE_PROBE);
                     assertEquals("TestResponse", response);
                 }
 
@@ -139,49 +139,6 @@ class RconFragmentResolutionSimpleTest {
     @Nested
     @DisplayName("Fragment Resolution Strategy Tests")
     class FragmentStrategyTests {
-
-        @Test
-        @DisplayName("PACKET_SIZE strategy should handle small response")
-        void packetSizeStrategyShouldHandleSmallResponse() throws Exception {
-            try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
-                serverChannel.bind(new InetSocketAddress("localhost", 0));
-                serverChannel.configureBlocking(true);
-                int port = serverChannel.socket().getLocalPort();
-
-                Thread serverThread = new Thread(() -> {
-                    try {
-                        SocketChannel client = serverChannel.accept();
-                        client.configureBlocking(true);
-
-                        ByteBuffer readBuffer = ByteBuffer.allocate(1024).order(ByteOrder.LITTLE_ENDIAN);
-                        client.read(readBuffer);
-                        client.write(createRconPacket(0, PacketType.SERVERDATA_AUTH_RESPONSE, ""));
-
-                        readBuffer.clear();
-                        client.read(readBuffer);
-                        // Send small response (< 4096)
-                        client.write(createRconPacket(0, PacketType.SERVERDATA_RESPONSE_VALUE, "Small"));
-
-                        Thread.sleep(50);
-                        client.close();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                });
-                serverThread.setDaemon(true);
-                serverThread.start();
-
-                Thread.sleep(100);
-
-                try (Rcon rcon = Rcon.connect("localhost", port)) {
-                    rcon.authenticate("test");
-                    String response = rcon.sendCommandWithPacketSizeStrategy("test");
-                    assertEquals("Small", response);
-                }
-
-                serverThread.join(500);
-            }
-        }
 
         @Test
         @DisplayName("TIMEOUT strategy should receive response")
@@ -319,7 +276,7 @@ class RconFragmentResolutionSimpleTest {
 
                 try (Rcon rcon = Rcon.connect("localhost", port)) {
                     rcon.authenticate("test");
-                    assertThrows(IOException.class, () -> rcon.sendCommandWithPacketSizeStrategy("test"));
+                    assertThrows(IOException.class, () -> rcon.sendCommand("test"));
                 }
 
                 serverThread.join(500);
@@ -361,7 +318,7 @@ class RconFragmentResolutionSimpleTest {
 
                 try (Rcon rcon = Rcon.connect("localhost", port)) {
                     rcon.authenticate("test");
-                    assertThrows(IOException.class, () -> rcon.sendCommandWithPacketSizeStrategy("test"));
+                    assertThrows(IOException.class, () -> rcon.sendCommand("test"));
                 }
 
                 serverThread.join(500);
@@ -495,48 +452,6 @@ class RconFragmentResolutionSimpleTest {
                     rcon.authenticate("test");
                     String response = rcon.sendCommand("test");
                     assertEquals("DefaultOK", response);
-                }
-
-                serverThread.join(500);
-            }
-        }
-
-        @Test
-        @DisplayName("sendCommand with PACKET_SIZE strategy should work")
-        void sendCommandWithPacketSizeStrategyShouldWork() throws Exception {
-            try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
-                serverChannel.bind(new InetSocketAddress("localhost", 0));
-                serverChannel.configureBlocking(true);
-                int port = serverChannel.socket().getLocalPort();
-
-                Thread serverThread = new Thread(() -> {
-                    try {
-                        SocketChannel client = serverChannel.accept();
-                        client.configureBlocking(true);
-
-                        ByteBuffer readBuffer = ByteBuffer.allocate(1024).order(ByteOrder.LITTLE_ENDIAN);
-                        client.read(readBuffer);
-                        client.write(createRconPacket(0, PacketType.SERVERDATA_AUTH_RESPONSE, ""));
-
-                        readBuffer.clear();
-                        client.read(readBuffer);
-                        client.write(createRconPacket(0, PacketType.SERVERDATA_RESPONSE_VALUE, "PacketSizeOK"));
-
-                        Thread.sleep(50);
-                        client.close();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                });
-                serverThread.setDaemon(true);
-                serverThread.start();
-
-                Thread.sleep(100);
-
-                try (Rcon rcon = Rcon.connect("localhost", port)) {
-                    rcon.authenticate("test");
-                    String response = rcon.sendCommand("test", FragmentResolutionStrategy.PACKET_SIZE);
-                    assertEquals("PacketSizeOK", response);
                 }
 
                 serverThread.join(500);

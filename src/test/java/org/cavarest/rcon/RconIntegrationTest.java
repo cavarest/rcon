@@ -371,51 +371,6 @@ class RconIntegrationTest {
     }
 
     @Nested
-    @DisplayName("Multi-Packet Response Tests - PACKET_SIZE Strategy")
-    class MultiPacketPacketSizeTests {
-
-        @Test
-        @DisplayName("Should handle multi-packet response with PACKET_SIZE strategy")
-        void shouldHandleMultiPacketWithPacketSizeStrategy() throws IOException {
-            rconClient.setFragmentResolutionStrategy(FragmentResolutionStrategy.PACKET_SIZE);
-
-            System.out.println("Creating entities using exponential duplication...");
-
-            // Create first "duplicator" armor stand
-            rconClient.sendCommand(
-                "summon armor_stand ~ ~ ~ {Tags:[\"dup\"],Invisible:1b,NoGravity:1b}"
-            );
-
-            // Exponentially duplicate to 128 entities
-            for (int i = 0; i < 7; i++) {
-                rconClient.sendCommand(
-                    "execute as @e[tag=dup] run summon armor_stand ~ ~ ~ {Tags:[\"dup\"],Invisible:1b,NoGravity:1b}"
-                );
-            }
-
-            try {
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
-            // Query all entities using the magic command
-            String entityData = rconClient.sendCommand(
-                "execute as @e[tag=dup] run data get entity @s"
-            );
-
-            assertNotNull(entityData, "Entity data should not be null");
-            System.out.println("PACKET_SIZE strategy response length: " + entityData.length() + " bytes");
-
-            // Verify we got a complete response
-            assertFalse(entityData.isEmpty(), "Entity data should not be empty");
-
-            // Clean up
-            rconClient.sendCommand("kill @e[tag=dup]");
-        }
-    }
-
-    @Nested
     @DisplayName("Multi-Packet Response Tests - TIMEOUT Strategy")
     class MultiPacketTimeoutTests {
 
