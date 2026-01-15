@@ -1,0 +1,190 @@
+---
+title: Byte Order
+parent: Core Concepts
+nav_order: 4
+---
+
+== Byte Order
+
+=== Purpose
+
+Understanding little-endian byte order used in the RCON protocol and why it matters for Java implementations.
+
+=== The Problem
+
+Java's default byte order is **big-endian** (most significant byte first), but the RCON protocol uses **little-endian** (least significant byte first). This mismatch can cause protocol failures if not handled correctly.
+
+=== Endianness Explained
+
+==== Big-Endian (Network Order, Java Default)
+
+Most significant byte comes first:
+
+[source]
+----
+Integer value: 0x12345678
+Big-endian bytes: 12 34 56 78
+                 ↑        ↑
+                 MSB      LSB
+----
+
+==== Little-Endian (Intel x86, RCON Protocol)
+
+Least significant byte comes first:
+
+[source]
+----
+Integer value: 0x12345678
+Little-endian bytes: 78 56 34 12
+                     ↑        ↑
+                     LSB      MSB
+----
+
+=== Why It Matters
+
+If you encode integers using Java's default big-endian, the server will interpret the bytes incorrectly:
+
+[source,java]
+----
+// WRONG - Server receives 0x78563412 instead of 0x12345678
+ByteBuffer.allocate(4).putInt(0x12345678).array();
+// Result: 12 34 56 78 (big-endian)
+
+// CORRECT - Server receives 0x12345678
+ByteBuffer.allocate(4)
+    .order(ByteOrder.LITTLE_ENDIAN)
+    .putInt(0x12345678)
+    .array();
+// Result: 78 56 34 12 (little-endian)
+----
+
+=== Correct Encoding
+
+Always specify `LITTLE_ENDIAN` when encoding packets:
+
+[source,java]
+----
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+public class PacketEncoder {
+    public byte[] encodeInt(int value) {
+        return ByteBuffer.allocate(4)
+            .order(ByteOrder.LITTLE_ENDIAN)  // Critical!
+            .putInt(value)
+            .array();
+    }
+}
+----
+
+=== Correct Decoding
+
+Also specify `LITTLE_ENDIAN` when decoding packets:
+
+[source,java]
+----
+public class PacketDecoder {
+    public int decodeInt(byte[] bytes) {
+        return ByteBuffer.wrap(bytes)
+            .order(ByteOrder.LITTLE_ENDIAN)  // Critical!
+            .getInt();
+    }
+}
+----
+
+=== Real-World Example
+
+Encoding the packet size field:
+
+[source,java]
+----
+// Packet with 7-byte payload "test\0"
+int payloadSize = 7;
+int packetSize = payloadSize + 8; // ID(4) + Type(4) + Payload
+// packetSize = 15 (0x0000000F)
+
+// WRONG - Big-endian
+ByteBuffer.allocate(4).putInt(15).array();
+// Result: 00 00 00 0F
+// Server interprets as: 0x0F000000 = 251,658,240
+
+// CORRECT - Little-endian
+ByteBuffer.allocate(4)
+    .order(ByteOrder.LITTLE_ENDIAN)
+    .putInt(15)
+    .array();
+// Result: 0F 00 00 00
+// Server interprets as: 0x0000000F = 15
+----
+
+=== Testing Endianness
+
+Verify your byte order with a simple test:
+
+[source,java]
+----
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+@Test
+public void testLittleEndian() {
+    int value = 0x12345678;
+
+    byte[] littleEndian = ByteBuffer.allocate(4)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .putInt(value)
+        .array();
+
+    assertArrayEquals(
+        new byte[] {0x78, 0x56, 0x34, 0x12},
+        littleEndian
+    );
+}
+----
+
+=== Common Pitfalls
+
+==== Using Arrays Directly
+
+[source,java]
+----
+// WRONG - No byte order control
+byte[] size = new byte[4];
+size[0] = (byte) (value >> 24);
+size[1] = (byte) (value >> 16);
+size[2] = (byte) (value >> 8);
+size[3] = (byte) value;
+// This is big-endian!
+
+// CORRECT - Use ByteBuffer
+byte[] size = ByteBuffer.allocate(4)
+    .order(ByteOrder.LITTLE_ENDIAN)
+    .putInt(value)
+    .array();
+----
+
+==== DataOutputStream
+
+[source,java]
+----
+// WRONG - DataOutputStream uses big-endian
+ByteArrayOutputStream baos = new ByteArrayOutputStream();
+DataOutputStream dos = new DataOutputStream(baos);
+dos.writeInt(value); // Big-endian!
+
+// CORRECT - Use ByteBuffer
+ByteBuffer.allocate(4)
+    .order(ByteOrder.LITTLE_ENDIAN)
+    .putInt(value)
+    .array();
+----
+
+=== Performance Note
+
+`ByteBuffer` with explicit byte order has no performance penalty over other methods. The JIT compiler optimizes it well.
+
+=== See Also
+
+* link:packet-protocol/index.html[Packet Protocol] - Binary packet structure
+* link:../../internals/protocol-spec.html[Protocol Specification] - Complete protocol docs
+* link:charset-handling/index.html[Charset Handling] - Text encoding details

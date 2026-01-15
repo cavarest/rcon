@@ -27,3 +27,14 @@ build/test-results/
 # Project-specific
 *.bak
 CLAUDE.md
+_site
+
+# Internal planning docs (not for public repo)
+MULTI_PACKET_RESPONSE_PLAN.md
+PILAF_TEAM_PROPOSAL.md
+
+# Docs
+docs/_site/
+docs/.lycheecache
+docs/Gemfile.lock
+

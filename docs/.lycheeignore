@@ -1,0 +1,11 @@
+# Links to skip during link checking
+# Add external links that are known to be problematic but acceptable
+
+# The site hasn't been deployed yet, so all cavarest.github.io links will 404
+^https://cavarest\.github\.io/rcon
+
+# GitHub repository doesn't exist yet
+^https://github\.com/cavarest/rcon
+
+# Javadoc package not published yet
+^https://javadoc\.io/doc/io\.cavarest/rcon

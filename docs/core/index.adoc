@@ -1,0 +1,47 @@
+---
+title: Core Concepts
+has_children: true
+nav_order: 3
+---
+
+== Core Concepts
+
+=== Purpose
+
+Deep dive into the internal architecture and design decisions of Rcon.
+
+=== Topics
+
+* link:fragment-resolution/index.html[Fragment Resolution] - How multi-packet responses are handled
+* link:thread-safety/index.html[Thread Safety Model] - Concurrent command execution
+* link:packet-protocol/index.html[Packet Protocol] - Binary encoding details
+* link:byte-order/index.html[Byte Order] - Little-endian encoding
+* link:buffer-management/index.html[Buffer Management] - I/O buffer strategies
+* link:charset-handling/index.html[Charset Handling] - Text encoding for color codes
+
+=== Architecture
+
+Rcon follows a layered architecture with clear separation of concerns:
+
+. **High-Level API** (`RconClient`) - User-friendly interface with logging
+. **Core API** (`Rcon`) - Thread-safe protocol implementation
+. **I/O Layer** (`PacketReader`/`PacketWriter`) - Socket operations
+. **Codec Layer** (`PacketCodec`) - Binary encoding/decoding
+. **Domain Model** (`Packet`) - Immutable packet representation
+
+Each layer has a single responsibility and can be used independently if needed.
+
+=== Design Principles
+
+* **Zero Dependencies** - Pure Java standard library
+* **Immutability** - `Packet` objects are immutable
+* **Thread Safety** - Safe concurrent access via synchronized methods
+* **Separation of Concerns** - Clear layer boundaries
+* **Configurability** - Pluggable strategies and options
+
+=== Performance Characteristics
+
+* **Minimal Allocation** - Buffers are reused via `compact()`
+* **Lock-Free Counter** - `AtomicInteger` for request IDs
+* **Efficient Encoding** - Direct buffer manipulation
+* **Smart Fragment Resolution** - Default strategy minimizes round-trips

@@ -1,8 +1,12 @@
-= Cavarest RCON Library
+= Cavarest RCON Java Library
 
 image:https://img.shields.io/badge/Java-11%2B-blue[Java Version]
 image:https://img.shields.io/badge/Gradle-8.5-green[Gradle Version]
 image:https://img.shields.io/badge/License-MIT-yellow[License]
+image:https://github.com/cavarest/rcon/actions/workflows/unit-tests.yml/badge.svg["Unit Tests", link="https://github.com/cavarest/pilaf/actions/workflows/unit-tests.yml"]
+image:https://github.com/cavarest/rcon/actions/workflows/integration-tests.yml/badge.svg["Integration Tests", link="https://github.com/cavarest/pilaf/actions/workflows/integration-tests.yml"]
+
+image:https://img.shields.io/badge/Website-RCON_documentation-blue.svg["Documentation site", link="https://cavarest.github.io/rcon"]
 
 A Java library for communicating with Minecraft servers using the RCON (Remote
 Console) protocol. This library provides a simple and efficient API for sending
@@ -63,8 +67,8 @@ src/main/java/org/cavarest/rcon/
                     └────────┬─────────┘
                              │
                     ┌────────▼─────────┐
-                    │      Rcon        │  ← Core client
-                    │  (Builder Pattern)│
+                    │     Rcon         │  ← Core client
+                    │ (Builder Pattern)│
                     └────────┬─────────┘
                              │
               ┌──────────────┼──────────────┐
@@ -130,7 +134,8 @@ try (RconClient client = new RconClient("localhost", 25575, "password")) {
 
 === Using the Builder Pattern
 
-The `RconClient.Builder` class provides a fluent API for constructing RCON clients:
+The `RconClient.Builder` class provides a fluent API for constructing RCON
+clients:
 
 [source,java]
 ----
@@ -269,7 +274,8 @@ All integers are stored in **little-endian** byte order.
 
 === Fragmentation and Multi-Packet Responses
 
-The Minecraft server can fragment responses across multiple packets when the response exceeds the maximum payload size.
+The Minecraft server can fragment responses across multiple packets when the
+response exceeds the maximum payload size.
 
 Maximum payload sizes are:
 
@@ -278,9 +284,12 @@ Maximum payload sizes are:
 
 ==== Automatic Multi-Packet Handling
 
-The library automatically handles multi-packet responses - no configuration required.
+The library automatically handles multi-packet responses - no configuration
+required.
 
-When a Minecraft server returns a response exceeding 4096 bytes, the library reads all packets and assembles the complete response transparently. You do not need to configure anything.
+When a Minecraft server returns a response exceeding 4096 bytes, the library
+reads all packets and assembles the complete response transparently. You do not
+need to configure anything.
 
 [source,java]
 ----
@@ -296,16 +305,23 @@ try (RconClient client = new RconClient("localhost", 25575, "password")) {
 
 [NOTE]
 ====
-Multi-packet response handling has been verified with responses exceeding 87,000 bytes across ~22 packets.
-The library automatically reads all fragments and returns the complete response regardless of size.
+Multi-packet response handling has been verified with responses exceeding 87,000
+bytes across ~22 packets. The library automatically reads all fragments and
+returns the complete response regardless of size.
 ====
 
 ==== Advanced: Fragment Resolution Strategies
 
-The library uses the `ACTIVE_PROBE` strategy by default, which is reliable across all server implementations. For advanced use cases, you can customize the fragment resolution strategy:
+The library uses the `ACTIVE_PROBE` strategy by default, which is reliable
+across all server implementations.
 
-* **ACTIVE_PROBE** (default): Sends an empty command probe to detect the end of the response. Most reliable across all server implementations.
-* **TIMEOUT**: Waits for a fixed timeout period after the last packet. Use this for faster detection when server response time is predictable.
+For advanced use cases, you can customize the fragment resolution strategy:
+
+* **ACTIVE_PROBE** (default): Sends an empty command probe to detect the end of
+the response. Most reliable across all server implementations.
+
+* **TIMEOUT**: Waits for a fixed timeout period after the last packet. Use this
+for faster detection when server response time is predictable.
 
 [source,java]
 ----
@@ -335,22 +351,26 @@ Rcon rcon = Rcon.newBuilder()
 
 == Testing
 
-This project includes both unit tests and integration tests to ensure code quality and reliability.
+This project includes both unit tests and integration tests to ensure code
+quality and reliability.
 
 === Unit Tests
 
-Unit tests verify the core functionality of the RCON library without requiring external dependencies:
+Unit tests verify the core functionality of the RCON library without requiring
+external dependencies:
 
 [source,shell]
 ----
 ./gradlew test
 ----
 
-Unit tests are fast and suitable for local development. Test reports are generated at `build/reports/tests/test/index.html`.
+Unit tests are fast and suitable for local development. Test reports are
+generated at `build/reports/tests/test/index.html`.
 
 === Integration Tests
 
-Integration tests verify the library works correctly against a real Minecraft server running in Docker:
+Integration tests verify the library works correctly against a real Minecraft
+server running in Docker:
 
 [source,shell]
 ----
@@ -358,6 +378,7 @@ Integration tests verify the library works correctly against a real Minecraft se
 ----
 
 Integration tests require Docker and take longer to run due to:
+
 * Starting a Minecraft Paper 1.21.8 server in a Docker container
 * Network initialization and server startup time
 * Actual RCON communication with the server
@@ -385,13 +406,17 @@ SKIP_INTEGRATION_TESTS=true ./gradlew test
 Tests are organized using JUnit 5 tags:
 
 * *Unit tests*: Tagged with `@Tag("unit")` or no tag, run with `./gradlew test`
-* *Integration tests*: Tagged with `@Tag("integration")`, run with `./gradlew integrationTest`
 
-The default `test` task excludes integration tests, ensuring fast local test execution.
+* *Integration tests*: Tagged with `@Tag("integration")`, run with `./gradlew
+integrationTest`
+
+The default `test` task excludes integration tests, ensuring fast local test
+execution.
 
 == Development Workflow
 
-This section describes the development workflow, testing procedures, and release process.
+This section describes the development workflow, testing procedures, and release
+process.
 
 === Pre-Release Checklist
 
@@ -422,32 +447,30 @@ Before creating a release, ensure all tests pass:
 
 Releases are automated using GitHub Actions. To create a release:
 
-==== Option 1: GitHub Release UI (Recommended)
-
-. Go to https://github.com/cavarest/rcon/releases/new[new release page]
-. Create a new tag (e.g., `v0.2.0`)
-. Add release notes (optional)
-. Click "Publish release"
-. The `Release` workflow will automatically:
-  - Build the project
-  - Publish to GitHub Packages
-  - Upload JAR to GitHub Releases
-
-==== Option 2: Manual Workflow Trigger
+==== Option 1: Manual Workflow Trigger
 
 . Navigate to https://github.com/cavarest/rcon/actions/workflows/publish-release.yml[Release workflow]
-. Click "Run workflow"
-. Enter:
-  - `release-version`: e.g., `0.2.0`
-  - `post-release-version`: e.g., `0.2.1-SNAPSHOT`
-. Click "Run workflow"
-. The workflow will:
-  - Update version.properties
-  - Commit and push changes (creating the tag)
-  - Build and publish to GitHub Packages
-  - Upload JAR to GitHub Releases
 
-==== Option 3: Push a Git Tag
+. Click "Run workflow"
+
+. Enter:
+
+** `release-version`: e.g., `0.2.0`
+
+** `post-release-version`: e.g., `0.2.1-SNAPSHOT`
+. Click "Run workflow"
+
+. The workflow will:
+
+** Update version.properties
+
+** Commit and push changes (creating the tag)
+
+** Build and publish to GitHub Packages
+
+** Upload JAR to GitHub Releases
+
+==== Option 2: Push a Git Tag
 
 [source,shell]
 ----
@@ -475,7 +498,9 @@ The project includes the following CI/CD workflows:
 
 === Version Management
 
-The project version is defined in `version.properties`. To update the version:
+The project version is defined in `version.properties`.
+
+To update the version:
 
 . Edit `version.properties`:
 +
@@ -516,9 +541,11 @@ The JAR file will be generated at `build/libs/cavarest-rcon-{version}.jar`.
 ./gradlew clean
 ----
 
-== License
+== Copyright and license
 
 This project is licensed under the MIT License.
+
+Copyright to the Cavarest project.
 
 == References
 

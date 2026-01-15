@@ -1,0 +1,204 @@
+---
+title: Advanced Topics
+has_children: true
+nav_order: 3
+---
+
+== Advanced Topics
+
+=== Purpose
+
+Explore advanced usage patterns and customization options for power users.
+
+=== Topics
+
+* link:fragment-resolution/index.html[Fragment Resolution Deep Dive] - Understanding multi-packet handling
+* link:async-patterns/index.html[Async Programming Patterns] - Non-blocking operations
+* link:performance-tuning/index.html[Performance Tuning] - Optimization strategies
+* link:custom-exceptions/index.html[Custom Exception Handling] - Extending error handling
+
+=== Thread Pooling
+
+For high-throughput scenarios, combine Rcon with thread pools:
+
+[source,java]
+----
+public class HighThroughputRcon {
+    private final RconClient client;
+    private final ExecutorService executor;
+
+    public HighThroughputRcon(RconClient client, int threadCount) {
+        this.client = client;
+        this.executor = Executors.newFixedThreadPool(threadCount);
+    }
+
+    public CompletableFuture<RconResponse> executeAsync(String command) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return client.sendCommand(command);
+            } catch (RconException e) {
+                throw new CompletionException(e);
+            }
+        }, executor);
+    }
+
+    public void shutdown() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        client.close();
+    }
+}
+----
+
+=== Reactive Integration
+
+Integrate with reactive frameworks like Project Reactor:
+
+[source,java]
+----
+import reactor.core.publisher.Mono;
+import io.cavarest.rcon.RconClient;
+import io.cavarest.rcon.RconResponse;
+
+public class ReactiveRcon {
+    private final RconClient client;
+
+    public ReactiveRcon(RconClient client) {
+        this.client = client;
+    }
+
+    public Mono<String> sendCommand(String command) {
+        return Mono.fromCallable(() -> {
+            RconResponse response = client.sendCommand(command);
+            return response.getResponse();
+        });
+    }
+
+    // Example: Chain multiple commands
+    public Mono<String> chainCommands(String... commands) {
+        return Flux.fromArray(commands)
+            .flatMap(this::sendCommand)
+            .collectList()
+            .map(responses -> String.join("\n", responses));
+    }
+}
+----
+
+=== Custom Packet Handler
+
+Extend Rcon with custom packet processing:
+
+[source,java]
+----
+import io.cavarest.rcon.Packet;
+import io.cavarest.rcon.PacketType;
+
+public class CustomPacketHandler {
+    public void handlePacket(Packet packet) {
+        if (packet.getType() == PacketType.RESPONSE) {
+            String payload = new String(
+                packet.getPayload(),
+                StandardCharsets.UTF_8
+            );
+            System.out.println("Received: " + payload);
+
+            // Custom processing logic
+            if (payload.contains("Warning:")) {
+                // Handle warning messages specially
+            }
+        }
+    }
+}
+----
+
+=== Monitoring and Metrics
+
+Add metrics collection to monitor Rcon operations:
+
+[source,java]
+----
+import java.time.Duration;
+import java.time.Instant;
+
+public class MetricsRconClient implements RconClient {
+    private final RconClient delegate;
+    private final MetricRegistry metrics;
+
+    public MetricsRconClient(RconClient delegate, MetricRegistry metrics) {
+        this.delegate = delegate;
+        this.metrics = metrics;
+    }
+
+    @Override
+    public RconResponse sendCommand(String command) {
+        Instant start = Instant.now();
+        try {
+            RconResponse response = delegate.sendCommand(command);
+            metrics.counter("rcon.success").increment();
+            return response;
+        } catch (RconException e) {
+            metrics.counter("rcon.failure").increment();
+            throw e;
+        } finally {
+            Duration duration = Duration.between(start, Instant.now());
+            metrics.timer("rcon.latency").record(duration.toMillis(), TimeUnit.MILLISECONDS);
+        }
+    }
+
+    // Delegate other methods...
+}
+----
+
+=== Circuit Breaker Pattern
+
+Implement circuit breaker for resilience:
+
+[source,java]
+----
+public class CircuitBreakerRconClient {
+    private final RconClient client;
+    private final int threshold;
+    private final long timeoutMillis;
+
+    private int failureCount = 0;
+    private long lastFailureTime = 0;
+    private boolean circuitOpen = false;
+
+    public RconResponse sendCommand(String command) {
+        if (circuitOpen) {
+            long timeSinceLastFailure = System.currentTimeMillis() - lastFailureTime;
+            if (timeSinceLastFailure > timeoutMillis) {
+                circuitOpen = false;
+                failureCount = 0;
+            } else {
+                throw new RconConnectionException("Circuit breaker is open");
+            }
+        }
+
+        try {
+            RconResponse response = client.sendCommand(command);
+            failureCount = 0;
+            return response;
+        } catch (RconException e) {
+            failureCount++;
+            lastFailureTime = System.currentTimeMillis();
+            if (failureCount >= threshold) {
+                circuitOpen = true;
+            }
+            throw e;
+        }
+    }
+}
+----
+
+=== Next Steps
+
+* link:../../core/index.html[Core Concepts] - Internal architecture details
+* link:../../reference/index.html[API Reference] - Complete API docs

@@ -1,0 +1,426 @@
+---
+title: Buffer Management
+parent: Core Concepts
+nav_order: 6
+---
+
+== Buffer Management
+
+=== Purpose
+
+Understanding how Rcon manages I/O buffers for efficient network communication.
+
+=== Overview
+
+Rcon uses double buffering with `ByteBuffer` for efficient network I/O. Buffers are reused rather than reallocated, reducing memory churn and GC pressure.
+
+=== Buffer Architecture
+
+[source]
+----
+Application     Buffer          Socket
+    │             │              │
+    │  write      │              │
+    ├────────────>│              │
+    │             │  flush       │
+    │             ├────────────>│
+    │             │              │
+    │  read       │              │
+    │<────────────┤              │
+    │             │  fill        │
+    │             │<─────────────┤
+    │             │              │
+    │  compact    │              │
+    │             │<─────────────┤ (internal)
+----
+
+=== Buffer Sizes
+
+==== Send Buffer (PacketWriter)
+
+[source,java]
+----
+private static final int DEFAULT_SEND_BUFFER = 1460;  // Typical MTU
+----
+
+* **Size**: 1460 bytes (typical network MTU)
+* **Purpose**: Send packets efficiently
+* **Rationale**: Avoids fragmentation at network layer
+
+==== Receive Buffer (PacketReader)
+
+[source,java]
+----
+private static final int DEFAULT_RECEIVE_BUFFER = 4096;
+----
+
+* **Size**: 4096 bytes (max RCON packet payload)
+* **Purpose**: Receive complete packets in one read
+* **Rationale**: Matches protocol max packet size
+
+=== Double Buffering Pattern
+
+==== The Problem
+
+Simple buffer allocation on each read:
+
+[source,java]
+----
+// WRONG - Allocates new buffer on every read
+while (true) {
+    ByteBuffer buffer = ByteBuffer.allocate(4096);  // New allocation!
+    channel.read(buffer);
+    // ... process packet ...
+}
+----
+
+This causes:
+* High memory allocation rate
+* Increased GC pressure
+* Poor performance
+
+==== The Solution: Double Buffering
+
+[source,java]
+----
+// CORRECT - Reuse buffer with compact()
+ByteBuffer buffer = ByteBuffer.allocate(4096);
+
+while (true) {
+    // 1. Fill buffer from channel
+    channel.read(buffer);
+
+    // 2. Flip for reading
+    buffer.flip();
+
+    // 3. Process packet data
+    processPacket(buffer);
+
+    // 4. Compact for reuse
+    buffer.compact();  // Move remaining data to beginning
+}
+----
+
+### ByteBuffer Operations
+
+==== flip()
+
+Switch from write mode to read mode:
+
+[source]
+----
+Before flip():
++------------------+------------------+
+|     Read Data    |    Unused        |
++------------------+------------------+
+^                  ^                  ^
+0                position          limit
+
+After flip():
++------------------+------------------+
+|     Read Data    |    Unused        |
++------------------+------------------+
+^                  ^                  ^
+0                limit              capacity
+
+position = 0 (reset to beginning)
+limit = previous position (data length)
+----
+
+==== compact()
+
+Move remaining data to beginning, prepare for more writes:
+
+[source]
+----
+Before compact():
++------------------+------------------+
+|     Read Data    |    Unused        |
++------------------+------------------+
+^         ^        ^                  ^
+0       position  limit            capacity
+
+After compact():
++------------------+------------------+
+| Remaining Data   |    Free Space    |
++------------------+------------------+
+^                  ^                  ^
+0                position          limit
+
+- Move data from [position, limit) to [0, remaining)
+- Set position = remaining
+- Set limit = capacity
+- Buffer ready for more writes
+----
+
+### Implementation: PacketReader
+
+[source,java]
+----
+public class PacketReader implements AutoCloseable {
+    private static final int BUFFER_SIZE = 4096;
+
+    private final SocketChannel channel;
+    private final ByteBuffer buffer;
+
+    public PacketReader(SocketChannel channel) {
+        this.channel = channel;
+        this.buffer = ByteBuffer.allocate(BUFFER_SIZE);
+    }
+
+    public Packet readPacket(Duration timeout) throws IOException {
+        // Read until we have a complete packet
+        while (true) {
+            // Check if we have enough data for size field
+            buffer.flip();
+
+            if (buffer.remaining() < 4) {
+                // Need more data
+                buffer.compact();
+                channel.read(buffer);
+                continue;
+            }
+
+            // Read packet size
+            int size = buffer.getInt();
+
+            // Check if we have complete packet
+            if (buffer.remaining() < size) {
+                // Need more data
+                buffer.compact();
+                channel.read(buffer);
+                continue;
+            }
+
+            // We have complete packet!
+            return decodePacket(size);
+        }
+    }
+
+    private Packet decodePacket(int size) {
+        // Read ID, type, payload
+        int id = buffer.getInt();
+        int type = buffer.getInt();
+        byte[] payload = new byte[size - 8];
+        buffer.get(payload);
+
+        // Compact remaining data for next packet
+        buffer.compact();
+
+        return new Packet(id, PacketType.fromValue(type), payload);
+    }
+
+    @Override
+    public void close() {
+        // No resources to release (buffer is stack-allocated)
+    }
+}
+----
+
+### Implementation: PacketWriter
+
+[source,java]
+----
+public class PacketWriter implements AutoCloseable {
+    private static final int BUFFER_SIZE = 1460;
+
+    private final SocketChannel channel;
+    private final ByteBuffer buffer;
+
+    public PacketWriter(SocketChannel channel) {
+        this.channel = channel;
+        this.buffer = ByteBuffer.allocate(BUFFER_SIZE);
+    }
+
+    public void writePacket(Packet packet) throws IOException {
+        // Encode packet to buffer
+        buffer.clear();
+        encodePacket(packet, buffer);
+        buffer.flip();
+
+        // Write buffer to channel
+        while (buffer.hasRemaining()) {
+            channel.write(buffer);
+        }
+    }
+
+    private void encodePacket(Packet packet, ByteBuffer buffer) {
+        byte[] payload = packet.getPayload();
+        int size = 4 + 4 + payload.length;
+
+        buffer.putInt(size);           // Size field
+        buffer.putInt(packet.getId()); // ID field
+        buffer.putInt(packet.getType().getValue()); // Type field
+        buffer.put(payload);           // Payload
+    }
+
+    @Override
+    public void close() {
+        // No resources to release (buffer is stack-allocated)
+    }
+}
+----
+
+### Performance Benefits
+
+==== Memory Allocation
+
+Without double buffering:
+
+[source]
+----
+1000 packets × 4096 bytes = 4 MB allocated
++ GC overhead for 1000 objects
++ GC pause time
+----
+
+With double buffering:
+
+[source]
+----
+1 buffer × 4096 bytes = 4 KB allocated
++ No additional allocations
++ No GC overhead
+----
+
+**Result**: 1000x less memory allocation
+
+==== CPU Usage
+
+* **Less allocation**: Faster execution
+* **Better cache locality**: Same buffer reused
+* **No GC pauses**: Consistent latency
+
+### Tuning Buffer Sizes
+
+==== Large Responses
+
+If you frequently receive responses >4096 bytes, increase receive buffer:
+
+[source,java]
+----
+// Custom PacketReader with larger buffer
+public class LargePacketReader extends PacketReader {
+    private static final int BUFFER_SIZE = 65536;  // 64 KB
+
+    // ... implementation ...
+}
+----
+
+This reduces the number of read syscalls for large responses.
+
+==== Many Small Commands
+
+If you send many small commands, smaller send buffer may reduce latency:
+
+[source,java]
+----
+// Custom PacketWriter with smaller buffer
+public class LowLatencyPacketWriter extends PacketWriter {
+    private static final int BUFFER_SIZE = 512;  // 512 bytes
+
+    // ... implementation ...
+}
+----
+
+This reduces the time to fill and flush the buffer.
+
+### Monitoring Buffer Usage
+
+Add instrumentation to monitor buffer utilization:
+
+[source,java]
+----
+public class InstrumentedPacketReader extends PacketReader {
+    private long totalReads = 0;
+    private long totalBytes = 0;
+    private long maxRemaining = 0;
+
+    @Override
+    public Packet readPacket(Duration timeout) throws IOException {
+        Packet packet = super.readPacket(timeout);
+
+        // Track metrics
+        totalReads++;
+        totalBytes += packet.getPayload().length + 12;
+        maxRemaining = Math.max(maxRemaining, buffer.remaining());
+
+        return packet;
+    }
+
+    public double getAverageUtilization() {
+        return (double) totalBytes / (totalReads * BUFFER_SIZE);
+    }
+
+    public int getMaxRemaining() {
+        return maxRemaining;
+    }
+}
+----
+
+### Common Pitfalls
+
+==== Forgetting to flip()
+
+[source,java]
+----
+// WRONG - Buffer still in write mode
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+channel.read(buffer);
+int data = buffer.getInt();  // Reads from wrong position!
+----
+
+[source,java]
+----
+// CORRECT - Flip before reading
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+channel.read(buffer);
+buffer.flip();  // Switch to read mode
+int data = buffer.getInt();  // Correct!
+----
+
+==== Forgetting to compact()
+
+[source,java]
+----
+// WRONG - Loses remaining data
+while (true) {
+    channel.read(buffer);
+    buffer.flip();
+    processSomeData(buffer);
+    buffer.clear();  // Clears ALL data, including unread!
+}
+----
+
+[source,java]
+----
+// CORRECT - Compact preserves remaining data
+while (true) {
+    channel.read(buffer);
+    buffer.flip();
+    processSomeData(buffer);
+    buffer.compact();  // Preserves unread data
+}
+----
+
+### Direct Buffers
+
+For high-performance scenarios, consider direct buffers:
+
+[source,java]
+----
+ByteBuffer buffer = ByteBuffer.allocateDirect(4096);
+----
+
+Pros:
+* May avoid one copy between kernel and userspace
+* Better for I/O-heavy workloads
+
+Cons:
+* Slightly slower allocation
+* Memory not in JVM heap (harder to debug)
+
+### See Also
+
+* link:../core/packet-protocol/index.html[Packet Protocol] - Protocol specification
+* link:../guides/advanced/performance-tuning/index.html[Performance Tuning] - Optimization guide

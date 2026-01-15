@@ -1,0 +1,29 @@
+---
+title: Getting Started
+has_children: true
+nav_order: 1
+---
+
+== Getting Started
+
+=== Purpose
+
+This section helps you get up and running with Rcon quickly and efficiently.
+
+=== Overview
+
+Rcon is designed to be simple to use while providing robust features for production use:
+
+* **Zero setup** - Add the dependency and you're ready to go
+* **Simple API** - Send commands with a single method call
+* **Automatic multi-packet handling** - Large responses are assembled transparently
+* **Thread-safe operations** - Use from multiple threads without worry
+
+=== Learning Path
+
+We recommend following these guides in order:
+
+. link:installation[Installation] - Set up Rcon in your project
+. link:quick-start[Quick Start] - Send your first command in 5 minutes
+. link:architecture[Architecture Overview] - Understand how the library works
+. link:configuration[Configuration Options] - Customize Rcon behavior

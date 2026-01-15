@@ -1,0 +1,257 @@
+---
+title: Javadoc
+parent: API Reference
+nav_order: 1
+---
+
+== Javadoc
+
+=== Purpose
+
+Complete Javadoc API reference for the Rcon library.
+
+=== Online Javadoc
+
+The latest Javadoc is available online:
+
+* link:https://javadoc.io/doc/io.cavarest/rcon/[javadoc.io - Latest Release]
+
+=== Building Javadoc Locally
+
+Generate Javadoc from source:
+
+[source,bash]
+----
+./gradlew javadoc
+----
+
+The Javadoc will be generated in:
+
+[source,bash]
+----
+build/docs/javadoc/index.html
+----
+
+Open in a browser:
+
+[source,bash]
+----
+open build/docs/javadoc/index.html
+----
+
+=== Main Packages
+
+==== io.cavarest.rcon
+
+Top-level package containing the main API:
+
+* `RconClient` - High-level client API
+* `RconClient.Builder` - Fluent builder pattern
+* `RconResponse` - Response wrapper
+* `RconException` - Base exception class
+* `FragmentResolutionStrategy` - Fragment resolution strategies
+
+==== io.cavarest.rcon.core
+
+Core RCON implementation:
+
+* `Rcon` - Low-level RCON API
+* `Rcon.Builder` - Configuration builder
+
+==== io.cavarest.rcon.protocol
+
+Protocol implementation:
+
+* `Packet` - Immutable packet model
+* `PacketType` - Packet type enumeration
+* `PacketCodec` - Encoding/decoding
+
+==== io.cavarest.rcon.io
+
+I/O layer:
+
+* `PacketReader` - Socket reader with buffering
+* `PacketWriter` - Socket writer with buffering
+
+=== Key Classes
+
+==== RconClient
+
+[source,java]
+----
+/**
+ * High-level RCON client with logging and connection management.
+ *
+ * <p>This is the main entry point for RCON operations. It wraps the
+ * low-level {@link Rcon} class with logging and simplified API.</p>
+ *
+ * <p>Example usage:</p>
+ * <pre>{@code
+ * RconClient client = RconClient.builder()
+ *     .host("localhost")
+ *     .port(25575)
+ *     .password("password")
+ *     .build();
+ *
+ * RconResponse response = client.sendCommand("list");
+ * System.out.println(response.getResponse());
+ *
+ * client.close();
+ * }</pre>
+ *
+ * @see RconClient.Builder
+ */
+public class RconClient implements AutoCloseable {
+    // ...
+}
+----
+
+==== Rcon
+
+[source,java]
+----
+/**
+ * Low-level RCON protocol implementation.
+ *
+ * <p>This class provides direct access to RCON operations with full
+ * configuration options. Most users should use {@link RconClient} instead.</p>
+ *
+ * <p>All methods are thread-safe and may be called from multiple threads
+ * concurrently.</p>
+ *
+ * @see Rcon.Builder
+ */
+public class Rcon implements AutoCloseable {
+    /**
+     * Sends a command to the server and returns the response.
+     *
+     * @param command the command to send
+     * @return the server's response
+     * @throws RconException if the command fails
+     */
+    public synchronized RconResponse sendCommand(String command) {
+        // ...
+    }
+}
+----
+
+==== Packet
+
+[source,java]
+----
+/**
+ * Immutable RCON packet.
+ *
+ * <p>Packets are thread-safe and can be freely shared between threads.</p>
+ *
+ * @param id the request/response ID
+ * @param type the packet type
+ * @param payload the packet payload
+ */
+public class Packet {
+    /**
+     * Creates a new packet.
+     *
+     * @param id the request/response ID
+     * @param type the packet type
+     * @param payload the packet payload (will be copied)
+     */
+    public Packet(int id, PacketType type, byte[] payload) {
+        // ...
+    }
+}
+----
+
+=== Exception Hierarchy
+
+[source,java]
+----
+java.lang.Exception
+    └── RconException
+        ├── RconAuthenticationException
+        ├── RconConnectionException
+        └── RconProtocolException
+----
+
+==== RconException
+
+Base exception for all RCON errors.
+
+[source,java]
+----
+/**
+ * Base exception for all RCON-related errors.
+ *
+ * <p>Specific error types:</p>
+ * <ul>
+ *   <li>{@link RconAuthenticationException} - Authentication failures</li>
+ *   <li>{@link RconConnectionException} - Connection errors</li>
+ *   <li>{@link RconProtocolException} - Protocol violations</li>
+ * </ul>
+ */
+public class RconException extends Exception {
+    // ...
+}
+----
+
+=== API Examples
+
+==== Synchronous Command
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+
+try {
+    RconResponse response = client.sendCommand("list");
+    System.out.println(response.getResponse());
+} catch (RconException e) {
+    System.err.println("Command failed: " + e.getMessage());
+} finally {
+    client.close();
+}
+----
+
+==== Asynchronous Command
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+
+CompletableFuture<RconResponse> future = client.sendCommandAsync("seed");
+
+future.thenAccept(response -> {
+    System.out.println("Response: " + response.getResponse());
+}).exceptionally(throwable -> {
+    System.err.println("Command failed: " + throwable.getMessage());
+    return null;
+});
+----
+
+==== Custom Configuration
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .timeout(Duration.ofSeconds(30))
+    .charset(StandardCharsets.ISO_8859_1)
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .build();
+----
+
+=== See Also
+
+* link:../getting-started/index.html[Getting Started] - Setup and usage
+* link:../guides/basic-usage/index.html[Basic Usage] - Common operations
+* link:../guides/advanced/index.html[Advanced Topics] - Advanced patterns

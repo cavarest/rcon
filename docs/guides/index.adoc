@@ -1,0 +1,44 @@
+---
+title: Guides
+has_children: true
+nav_order: 2
+---
+
+== Guides
+
+=== Purpose
+
+This section provides comprehensive guides for using Rcon effectively in various scenarios.
+
+=== Guide Categories
+
+==== Basic Usage
+
+The <<basic-usage/index,Basic Usage>> section covers fundamental operations:
+
+* Sending simple commands
+* Handling responses
+* Working with multiple commands
+* Error handling best practices
+
+==== Common Patterns
+
+The <<common-patterns/index,Common Patterns>> section shows how to:
+
+* Create reusable Rcon clients
+* Implement command batching
+* Handle connection failures gracefully
+* Use the async API
+
+==== Advanced Topics
+
+The <<advanced/index,Advanced Topics>> section covers:
+
+* Custom fragment resolution strategies
+* Charset configuration for color codes
+* Connection pooling strategies
+* Performance optimization
+
+=== Navigation
+
+Use the left sidebar to navigate through the guides, or continue below to explore each category.

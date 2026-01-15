@@ -1,0 +1,452 @@
+---
+title: Custom Exception Handling
+parent: Advanced Topics
+nav_order: 4
+---
+
+== Custom Exception Handling
+
+=== Purpose
+
+Extending Rcon's exception hierarchy for application-specific error handling.
+
+=== Overview
+
+Rcon provides a custom exception hierarchy for clear error handling:
+
+[source]
+----
+java.lang.Exception
+    └── RconException
+        ├── RconAuthenticationException
+        ├── RconConnectionException
+        └── RconProtocolException
+----
+
+=== Exception Types
+
+==== RconException
+
+Base exception for all RCON errors.
+
+[source,java]
+----
+public class RconException extends Exception {
+    public RconException(String message) {
+        super(message);
+    }
+
+    public RconException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+----
+
+Usage:
+
+[source,java]
+----
+try {
+    RconResponse response = client.sendCommand("list");
+} catch (RconException e) {
+    // Handle any RCON error
+    System.err.println("RCON error: " + e.getMessage());
+}
+----
+
+==== RconAuthenticationException
+
+Thrown when authentication fails.
+
+[source,java]
+----
+try {
+    RconClient client = RconClient.builder()
+        .host("localhost")
+        .port(25575)
+        .password("wrong")  // Wrong password
+        .build();
+} catch (RconAuthenticationException e) {
+    // Handle authentication failure
+    System.err.println("Authentication failed: " + e.getMessage());
+}
+----
+
+==== RconConnectionException
+
+Thrown when connection fails or is lost.
+
+[source,java]
+----
+try {
+    RconClient client = RconClient.builder()
+        .host("unreachable-host")
+        .port(25575)
+        .password("password")
+        .build();
+} catch (RconConnectionException e) {
+    // Handle connection failure
+    System.err.println("Connection failed: " + e.getMessage());
+}
+----
+
+==== RconProtocolException
+
+Thrown when protocol violation occurs.
+
+[source,java]
+----
+try {
+    RconResponse response = client.sendCommand("list");
+} catch (RconProtocolException e) {
+    // Handle protocol error
+    System.err.println("Protocol error: " + e.getMessage());
+}
+----
+
+### Custom Exception Classes
+
+Create domain-specific exceptions:
+
+[source,java]
+----
+public class RconCommandTimeoutException extends RconException {
+    private final String command;
+    private final Duration timeout;
+
+    public RconCommandTimeoutException(
+        String command,
+        Duration timeout,
+        Throwable cause
+    ) {
+        super(
+            String.format(
+                "Command '%s' timed out after %d ms",
+                command,
+                timeout.toMillis()
+            ),
+            cause
+        );
+        this.command = command;
+        this.timeout = timeout;
+    }
+
+    public String getCommand() {
+        return command;
+    }
+
+    public Duration getTimeout() {
+        return timeout;
+    }
+}
+----
+
+Usage:
+
+[source,java]
+----
+public RconResponse sendCommandWithTimeout(
+    String command,
+    Duration timeout
+) throws RconCommandTimeoutException {
+    CompletableFuture<RconResponse> future =
+        client.sendCommandAsync(command);
+
+    try {
+        return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+        throw new RconCommandTimeoutException(command, timeout, e);
+    } catch (Exception e) {
+        throw new RconException("Command failed", e);
+    }
+}
+----
+
+=== Exception Wrapping
+
+Wrap Rcon exceptions in application-specific exceptions:
+
+[source,java]
+----
+public class ApplicationRconException extends RuntimeException {
+    private final String operation;
+
+    public ApplicationRconException(
+        String operation,
+        RconException cause
+    ) {
+        super(
+            String.format(
+                "Failed to execute RCON operation '%s': %s",
+                operation,
+                cause.getMessage()
+            ),
+            cause
+        );
+        this.operation = operation;
+    }
+
+    public String getOperation() {
+        return operation;
+    }
+
+    public RconException getRconCause() {
+        return (RconException) getCause();
+    }
+}
+----
+
+Usage:
+
+[source,java]
+----
+public String getPlayerList() {
+    try {
+        return client.sendCommand("list").getResponse();
+    } catch (RconException e) {
+        throw new ApplicationRconException("getPlayerList", e);
+    }
+}
+----
+
+### Retry Strategies
+
+==== Exponential Backoff
+
+[source,java]
+----
+public class RetryableRconClient {
+    private final RconClient client;
+    private final int maxRetries;
+
+    public RconResponse sendCommandWithRetry(String command)
+            throws RconException {
+        RconException lastException = null;
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return client.sendCommand(command);
+            } catch (RconConnectionException e) {
+                lastException = e;
+
+                if (attempt < maxRetries) {
+                    long delay = (long) Math.pow(2, attempt) * 100;
+                    try {
+                        Thread.sleep(delay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RconException("Interrupted during retry", ie);
+                    }
+                }
+            }
+        }
+
+        throw lastException;
+    }
+}
+----
+
+Usage:
+
+[source,java]
+----
+RetryableRconClient retryable = new RetryableRconClient(client, 3);
+
+try {
+    RconResponse response = retryable.sendCommandWithRetry("list");
+} catch (RconException e) {
+    // All retries exhausted
+    logger.error("Failed after 3 retries", e);
+}
+----
+
+### Circuit Breaker
+
+[source,java]
+----
+public class CircuitBreakerRconClient {
+    private final RconClient client;
+    private final int threshold;
+    private final long timeoutMillis;
+
+    private int failureCount = 0;
+    private long lastFailureTime = 0;
+    private boolean circuitOpen = false;
+
+    public RconResponse sendCommand(String command) throws RconException {
+        if (circuitOpen) {
+            long timeSinceLastFailure =
+                System.currentTimeMillis() - lastFailureTime;
+
+            if (timeSinceLastFailure > timeoutMillis) {
+                // Attempt to close circuit
+                circuitOpen = false;
+                failureCount = 0;
+            } else {
+                throw new RconConnectionException(
+                    "Circuit breaker is open"
+                );
+            }
+        }
+
+        try {
+            RconResponse response = client.sendCommand(command);
+            failureCount = 0;
+            return response;
+        } catch (RconException e) {
+            failureCount++;
+            lastFailureTime = System.currentTimeMillis();
+
+            if (failureCount >= threshold) {
+                circuitOpen = true;
+                logger.warn(
+                    "Circuit breaker opened after {} failures",
+                    failureCount
+                );
+            }
+
+            throw e;
+        }
+    }
+}
+----
+
+### Fallback Strategies
+
+==== Default Response
+
+[source,java]
+----
+public class FallbackRconClient {
+    private final RconClient primary;
+    private final RconClient fallback;
+
+    public RconResponse sendCommand(String command) throws RconException {
+        try {
+            return primary.sendCommand(command);
+        } catch (RconConnectionException e) {
+            logger.warn("Primary client failed, using fallback", e);
+            return fallback.sendCommand(command);
+        }
+    }
+}
+----
+
+==== Cached Response
+
+[source,java]
+----
+public class CachedRconClient {
+    private final RconClient client;
+    private final Map<String, CachedResponse> cache =
+        new ConcurrentHashMap<>();
+    private final Duration cacheTtl;
+
+    public RconResponse sendCommand(String command) throws RconException {
+        CachedResponse cached = cache.get(command);
+
+        if (cached != null && !cached.isExpired()) {
+            logger.debug("Cache hit for command: {}", command);
+            return cached.getResponse();
+        }
+
+        RconResponse response = client.sendCommand(command);
+        cache.put(command, new CachedResponse(response, cacheTtl));
+        return response;
+    }
+
+    private static class CachedResponse {
+        private final RconResponse response;
+        private final long expiryTime;
+
+        CachedResponse(RconResponse response, Duration ttl) {
+            this.response = response;
+            this.expiryTime = System.currentTimeMillis() + ttl.toMillis();
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() > expiryTime;
+        }
+
+        RconResponse getResponse() {
+            return response;
+        }
+    }
+}
+----
+
+### Exception Translation
+
+Translate Rcon exceptions to application errors:
+
+[source,java]
+----
+public class ExceptionTranslator {
+    public static ApplicationError translate(RconException e) {
+        if (e instanceof RconAuthenticationException) {
+            return new ApplicationError(
+                ErrorCode.AUTHENTICATION_FAILED,
+                "Invalid RCON password",
+                e
+            );
+        } else if (e instanceof RconConnectionException) {
+            return new ApplicationError(
+                ErrorCode.CONNECTION_FAILED,
+                "Cannot reach RCON server",
+                e
+            );
+        } else if (e instanceof RconProtocolException) {
+            return new ApplicationError(
+                ErrorCode.PROTOCOL_ERROR,
+                "RCON protocol violation",
+                e
+            );
+        } else {
+            return new ApplicationError(
+                ErrorCode.UNKNOWN_ERROR,
+                "Unknown RCON error",
+                e
+            );
+        }
+    }
+}
+----
+
+### Logging Best Practices
+
+==== Structured Logging
+
+[source,java]
+----
+try {
+    RconResponse response = client.sendCommand(command);
+} catch (RconAuthenticationException e) {
+    logger.error(
+        "Authentication failed for host={}, port={}",
+        host,
+        port,
+        e
+    );
+} catch (RconConnectionException e) {
+    logger.error(
+        "Connection failed for host={}, port={}",
+        host,
+        port,
+        e
+    );
+} catch (RconException e) {
+    logger.error(
+        "RCON error for command='{}', host={}, port={}",
+        command,
+        host,
+        port,
+        e
+    );
+}
+----
+
+### See Also
+
+* link:../common-configurations/index.html[Common Configurations] - Retry logic examples
+* link:../advanced/async-patterns/index.html[Async Patterns] - Async error handling
+* link:../../reference/index.html[API Reference] - Exception documentation

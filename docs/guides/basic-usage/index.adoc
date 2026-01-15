@@ -1,0 +1,158 @@
+---
+title: Basic Usage
+parent: Guides
+has_children: true
+nav_order: 1
+---
+
+== Basic Usage
+
+=== Purpose
+
+This section covers fundamental operations for working with Rcon in your applications.
+
+=== Core Concepts
+
+All Rcon operations follow a consistent pattern:
+
+1. **Create a client** - Use the builder pattern for configuration
+2. **Send commands** - Use `sendCommand()` or `sendCommandAsync()`
+3. **Handle responses** - Process the `RconResponse` object
+4. **Clean up** - Close the client when done
+
+=== The Builder Pattern
+
+`RconClient` uses a fluent builder for flexible configuration:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("rcon_password")
+    .timeout(Duration.ofSeconds(5))
+    .charset(StandardCharsets.UTF_8)
+    .build();
+----
+
+Available configuration options:
+
+* `host(String)` - Server hostname (default: "localhost")
+* `port(int)` - RCON port (default: 25575)
+* `password(String)` - RCON password (required)
+* `timeout(Duration)` - Connection timeout (default: 5 seconds)
+* `charset(Charset)` - Character encoding (default: UTF_8)
+* `fragmentStrategy(FragmentResolutionStrategy)` - Multi-packet strategy
+
+=== Synchronous Commands
+
+Use `sendCommand()` for blocking command execution:
+
+[source,java]
+----
+RconResponse response = client.sendCommand("seed");
+
+if (response.isSuccess()) {
+    System.out.println("Seed: " + response.getResponse());
+} else {
+    System.err.println("Command failed: " + response.getResponse());
+}
+----
+
+=== Asynchronous Commands
+
+Use `sendCommandAsync()` for non-blocking operations:
+
+[source,java]
+----
+CompletableFuture<RconResponse> future = client.sendCommandAsync("list");
+
+future.thenAccept(response -> {
+    System.out.println("Players: " + response.getResponse());
+}).exceptionally(throwable -> {
+    System.err.println("Error: " + throwable.getMessage());
+    return null;
+});
+----
+
+=== Error Handling
+
+Rcon provides a custom exception hierarchy for clear error reporting:
+
+[source,java]
+----
+try {
+    RconResponse response = client.sendCommand("op Player");
+} catch (RconAuthenticationException e) {
+    // Invalid password or authentication failed
+    System.err.println("Authentication failed: " + e.getMessage());
+} catch (RconConnectionException e) {
+    // Connection refused or timeout
+    System.err.println("Connection error: " + e.getMessage());
+} catch (RconProtocolException e) {
+    // Protocol violation or malformed response
+    System.err.println("Protocol error: " + e.getMessage());
+} catch (RconException e) {
+    // General Rcon error
+    System.err.println("Rcon error: " + e.getMessage());
+}
+----
+
+=== Multiple Commands
+
+The client maintains an authenticated connection for multiple commands:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+
+try {
+    // Send multiple commands using the same connection
+    RconResponse r1 = client.sendCommand("list");
+    RconResponse r2 = client.sendCommand("seed");
+    RconResponse r3 = client.sendCommand("difficulty");
+
+    // Process responses...
+} finally {
+    client.close();
+}
+----
+
+=== Resource Cleanup
+
+Always close the client when done to release resources:
+
+[source,java]
+----
+// Try-with-resources (recommended)
+try (RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build()) {
+    RconResponse response = client.sendCommand("list");
+    System.out.println(response.getResponse());
+}
+
+// Or manually close
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+try {
+    // Use client...
+} finally {
+    client.close();
+}
+----
+
+=== Next Steps
+
+* link:../common-urations/index.html[Common Configurations] - Learn common setup patterns
+* link:../advanced/async-patterns.html[Async Patterns] - Deep dive on async usage
+* link:../../reference/javadoc.html[API Reference] - Full Javadoc

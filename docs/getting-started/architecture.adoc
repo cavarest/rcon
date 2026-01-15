@@ -1,0 +1,124 @@
+---
+title: Architecture Overview
+parent: Getting Started
+nav_order: 3
+---
+
+== Architecture Overview
+
+=== Purpose
+
+Understand the layered architecture of Rcon and how each layer contributes to reliable remote command execution.
+
+=== Layer Structure
+
+Rcon is organized into four distinct layers, each with a specific responsibility:
+
+[source]
+----
+┌─────────────────────────────────────────┐
+│         RconClient (High-Level API)    │  ← You interact here
+│  - Logging and connection management    │
+│  - Builder pattern for configuration    │
+└────────────────┬────────────────────────┘
+                 │
+┌────────────────▼────────────────────────┐
+│           Rcon (Core API)              │  ← Thread-safe operations
+│  - Synchronized request/response        │
+│  - Fragment resolution strategies       │
+└────────────────┬────────────────────────┘
+                 │
+┌────────────────▼────────────────────────┐
+│    PacketReader / PacketWriter          │  ← Low-level I/O
+│  - NIO socket operations               │
+│  - Buffer management                   │
+└────────────────┬────────────────────────┘
+                 │
+┌────────────────▼────────────────────────┐
+│         PacketCodec                     │  ← Binary encoding
+│  - Protocol encoding/decoding          │
+│  - Configurable charset                │
+└────────────────┬────────────────────────┘
+                 │
+┌────────────────▼────────────────────────┐
+│       Packet (Domain Model)             │  ← Immutable data
+│  - PacketType constants                │
+└─────────────────────────────────────────┘
+----
+
+=== Layer Responsibilities
+
+==== RconClient
+
+The high-level API that wraps `Rcon` with additional functionality:
+
+* **Logging** - Automatic request/response logging
+* **Connection Management** - Handles opening/closing connections
+* **Builder Pattern** - Fluent API for configuration
+* **Async Support** - `sendCommandAsync()` for non-blocking operations
+
+==== Rcon
+
+The core API providing thread-safe RCON operations:
+
+* **Synchronized Methods** - `writeAndRead()` and `read()` ensure request/response matching
+* **AtomicInteger Request Counter** - Thread-safe ID generation without synchronization overhead
+* **Fragment Resolution** - Configurable strategies for multi-packet responses
+
+==== PacketReader / PacketWriter
+
+Low-level NIO socket I/O operations:
+
+* **Buffer Management** - Double-buffering with `compact()` after reads
+* **Default Buffers** - 4KB receive, 1460-byte send (typical MTU)
+* **Blocking I/O** - Uses `SocketChannel` for simplicity
+
+==== PacketCodec
+
+Binary protocol encoding/decoding:
+
+* **Little-Endian** - All integers use little-endian byte order
+* **Charset Support** - UTF-8 default, ISO-8859-1 for Minecraft color codes
+* **Packet Structure** - Encodes/decodes size, ID, type, and payload
+
+=== Fragment Resolution Strategies
+
+When server responses exceed 4096 bytes, they are split across multiple packets. Rcon provides two strategies:
+
+==== ACTIVE_PROBE (Default)
+
+Sends an empty command probe to detect the end of response:
+
+* **Most Reliable** - Explicitly detects response completion
+* **Minimal Latency** - Only one extra round-trip
+* **Recommended** - Use for most scenarios
+
+==== TIMEOUT
+
+Waits a fixed duration after receiving the last packet:
+
+* **Simpler** - No extra probe command needed
+* **Added Latency** - Must wait full timeout duration
+* **Use Case** - When probe commands cause issues
+
+=== Thread Safety Model
+
+* `Rcon.writeAndRead()` and `read()` are **synchronized**
+* `requestCounter` uses `AtomicInteger` for lock-free incrementing
+* Multiple threads can safely send commands concurrently
+* Each thread gets its own response with matching request ID
+
+=== Multi-Packet Handling
+
+Multi-packet responses are **fully automatic** - no configuration needed:
+
+* Responses of any size are handled transparently
+* Tested with responses exceeding 87,000 bytes (~22 packets)
+* Packets are assembled in the correct order using the request ID
+* The default API requires no special handling for large responses
+
+=== Next Steps
+
+* link:../guides/basic-usage/index.html[Basic Usage] - Learn common usage patterns
+* link:../core/fragment-resolution/index.html[Fragment Resolution] - Deep dive on multi-packet handling
+* link:../core/packet-protocol/index.html[Packet Protocol] - Binary protocol details

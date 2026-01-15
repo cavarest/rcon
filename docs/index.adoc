@@ -1,0 +1,50 @@
+---
+title: Home
+nav_order: 0
+---
+
+== Rcon: A Robust RCON Protocol Library for Java
+
+=== Purpose
+
+Rcon is a layered RCON (Remote Console) protocol library for Minecraft servers, written in pure Java with no runtime dependencies. It provides reliable remote command execution with automatic multi-packet response handling.
+
+=== Quick Start
+
+Get started with Rcon in minutes:
+
+* link:getting-started/installation[Add the dependency to your project]
+* link:getting-started/quick-start[Send your first RCON command in 5 minutes]
+* link:getting-started/architecture[Understand the layered architecture]
+
+=== Documentation Map
+
+==== New to Rcon?
+
+Follow this learning path:
+
+. Add Rcon to your project
+** link:getting-started/installation[Installation Guide]
+. Quick Start (5 minutes)
+** link:getting-started/quick-start[Quick Start Guide]
+. Understand the architecture
+** link:getting-started/architecture[Architecture Overview]
+
+==== Need Specific Information?
+
+* link:guides[Guides] - Step-by-step tutorials for common tasks
+* link:core[Core Concepts] - Deep dive into library internals
+* link:reference[API Reference] - Javadoc and API documentation
+
+=== Key Features
+
+* **Zero Dependencies** - Pure Java standard library only
+* **Thread-Safe** - Synchronized request/response matching
+* **Automatic Multi-Packet Handling** - Responses of any size handled transparently
+* **Configurable Fragment Resolution** - ACTIVE_PROBE (default) or TIMEOUT strategies
+* **Flexible API** - Both synchronous and asynchronous command execution
+* **Robust Error Handling** - Custom exception hierarchy for clear error reporting
+
+=== Version
+
+Current version: link:https://github.com/cavarest/rcon/releases[0.2.1]

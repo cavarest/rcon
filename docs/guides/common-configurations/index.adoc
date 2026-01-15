@@ -1,0 +1,241 @@
+---
+title: Common Configurations
+parent: Guides
+has_children: true
+nav_order: 2
+---
+
+== Common Configurations
+
+=== Purpose
+
+Learn common configuration patterns and setups for Rcon in various scenarios.
+
+=== Single Client Reuse
+
+Create a single client instance and reuse it for multiple commands:
+
+[source,java]
+----
+public class RconManager {
+    private final RconClient client;
+
+    public RconManager(String host, int port, String password) {
+        this.client = RconClient.builder()
+            .host(host)
+            .port(port)
+            .password(password)
+            .build();
+    }
+
+    public String sendCommand(String command) {
+        RconResponse response = client.sendCommand(command);
+        return response.getResponse();
+    }
+
+    public void close() {
+        client.close();
+    }
+}
+----
+
+=== Connection Pool
+
+For applications requiring multiple concurrent connections:
+
+[source,java]
+----
+public class RconConnectionPool {
+    private final Queue<RconClient> pool = new LinkedList<>();
+    private final int maxSize;
+
+    public RconConnectionPool(String host, int port, String password, int maxSize) {
+        this.maxSize = maxSize;
+        for (int i = 0; i < maxSize; i++) {
+            pool.add(RconClient.builder()
+                .host(host)
+                .port(port)
+                .password(password)
+                .build());
+        }
+    }
+
+    public RconClient acquire() {
+        synchronized (pool) {
+            while (pool.isEmpty()) {
+                try {
+                    pool.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for connection", e);
+                }
+            }
+            return pool.remove();
+        }
+    }
+
+    public void release(RconClient client) {
+        synchronized (pool) {
+            if (pool.size() < maxSize) {
+                pool.add(client);
+            } else {
+                client.close();
+            }
+            pool.notifyAll();
+        }
+    }
+}
+----
+
+=== Retry Logic
+
+Implement automatic retry on connection failures:
+
+[source,java]
+----
+public class RetryableRconClient {
+    private final RconClient client;
+    private final int maxRetries;
+
+    public RetryableRconClient(RconClient client, int maxRetries) {
+        this.client = client;
+        this.maxRetries = maxRetries;
+    }
+
+    public RconResponse sendCommandWithRetry(String command) {
+        RconException lastException = null;
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return client.sendCommand(command);
+            } catch (RconConnectionException e) {
+                lastException = e;
+                if (attempt < maxRetries) {
+                    try {
+                        Thread.sleep(1000 * (attempt + 1)); // Exponential backoff
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted during retry", ie);
+                    }
+                }
+            }
+        }
+        throw lastException;
+    }
+}
+----
+
+=== Custom Timeout
+
+Set custom connection timeout for slow networks:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("remote-server.example.com")
+    .port(25575)
+    .password("password")
+    .timeout(Duration.ofSeconds(30))  // 30 second timeout
+    .build();
+----
+
+=== Color Code Handling
+
+Use ISO-8859-1 charset to properly handle Minecraft color codes:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .charset(StandardCharsets.ISO_8859_1)  // For color codes
+    .build();
+
+RconResponse response = client.sendCommand("list");
+String coloredOutput = response.getResponse();
+// Color codes like §c[Server] will be preserved correctly
+----
+
+=== Fragment Strategy Selection
+
+Choose the appropriate fragment resolution strategy:
+
+[source,java]
+----
+// Use ACTIVE_PROBE for most cases (default)
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .fragmentStrategy(FragmentResolutionStrategy.ACTIVE_PROBE)
+    .build();
+
+// Use TIMEOUT for servers that don't handle empty commands well
+RconClient timeoutClient = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .build();
+----
+
+=== Logging
+
+The `RconClient` automatically logs request/response pairs. Enable debug logging to see details:
+
+[source,xml]
+----
+<!-- Logback example -->
+<configuration>
+    <logger name="io.cavarest.rcon" level="DEBUG"/>
+</configuration>
+----
+
+=== Async Batch Processing
+
+Process multiple commands concurrently using the async API:
+
+[source,java]
+----
+public class BatchCommandProcessor {
+    private final RconClient client;
+    private final ExecutorService executor;
+
+    public BatchCommandProcessor(RconClient client) {
+        this.client = client;
+        this.executor = Executors.newFixedThreadPool(5);
+    }
+
+    public List<String> processCommands(List<String> commands) {
+        List<CompletableFuture<String>> futures = commands.stream()
+            .map(cmd -> client.sendCommandAsync(cmd)
+                .thenApply(RconResponse::getResponse))
+            .toList();
+
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(
+            futures.toArray(new CompletableFuture[0])
+        );
+
+        try {
+            allOf.get(30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new RuntimeException("Batch processing failed", e);
+        }
+
+        return futures.stream()
+            .map(CompletableFuture::join)
+            .toList();
+    }
+
+    public void shutdown() {
+        executor.shutdown();
+        client.close();
+    }
+}
+----
+
+=== Next Steps
+
+* link:../advanced/index.html[Advanced Topics] - Learn advanced patterns
+* link:../../core/fragment-resolution/index.html[Fragment Resolution] - Deep dive on strategies
+* link:../../reference/index.html[API Reference] - Complete API documentation

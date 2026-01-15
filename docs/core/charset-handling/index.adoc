@@ -1,0 +1,280 @@
+---
+title: Charset Handling
+parent: Core Concepts
+nav_order: 5
+---
+
+== Charset Handling
+
+=== Purpose
+
+Understanding how Rcon handles character encoding for commands and responses, especially for Minecraft color codes.
+
+=== Overview
+
+RCON is fundamentally a binary protocol, but text payloads are encoded as byte arrays. The choice of character encoding affects how color codes and special characters are preserved.
+
+=== Default Encoding: UTF-8
+
+UTF-8 is the default encoding for all text:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    // UTF-8 is default
+    .build();
+----
+
+UTF-8 works correctly for:
+* Standard ASCII text
+* Unicode characters (emoji, international characters)
+* Most command output
+
+=== Color Code Encoding: ISO-8859-1
+
+Minecraft uses section signs (`§`) for color codes. These color codes are not standard ASCII and require special handling.
+
+==== The Problem
+
+In UTF-8, the section sign (`§`) is encoded as two bytes:
+* `§` = `0xC2 0xA7` (UTF-8)
+
+However, Minecraft's internal encoding treats it as:
+* `§` = `0xA7` (single byte, ISO-8859-1)
+
+This mismatch can corrupt color codes in responses.
+
+==== The Solution
+
+Use ISO-8859-1 (also called Latin-1) charset to preserve color codes:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .charset(StandardCharsets.ISO_8859_1)
+    .build();
+----
+
+=== Example: Color Code Preservation
+
+[source,java]
+----
+// With UTF-8 (default)
+RconClient utf8Client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+
+RconResponse response = utf8Client.sendCommand("list");
+System.out.println(response.getResponse());
+// Output: ??c[Server] ??fOnline players: 3
+// Color codes are corrupted!
+
+// With ISO-8859-1
+RconClient latin1Client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .charset(StandardCharsets.ISO_8859_1)
+    .build();
+
+RconResponse response = latin1Client.sendCommand("list");
+System.out.println(response.getResponse());
+// Output: §c[Server] §fOnline players: 3
+// Color codes are preserved!
+----
+
+=== Minecraft Color Codes
+
+Standard Minecraft color codes:
+
+[width="100%",cols="^1,2,6"]
+|===
+|Code|Color|Name
+
+|`§0`
+|Black
+|BLACK
+
+|`§1`
+|Dark Blue
+|DARK_BLUE
+
+|`§2`
+|Dark Green
+|DARK_GREEN
+
+|`§3`
+|Dark Aqua
+|DARK_AQUA
+
+|`§4`
+|Dark Red
+|DARK_RED
+
+|`§5`
+|Dark Purple
+|DARK_PURPLE
+
+|`§6`
+|Gold
+|GOLD
+
+|`§7`
+|Gray
+|GRAY
+
+|`§8`
+|Dark Gray
+|DARK_GRAY
+
+|`§9`
+|Blue
+|BLUE
+
+|`§a`
+|Green
+|GREEN
+
+|`§b`
+|Aqua
+|AQUA
+
+|`§c`
+|Red
+|RED
+
+|`§d`
+|Light Purple
+|LIGHT_PURPLE
+
+|`§e`
+|Yellow
+|YELLOW
+
+|`§f`
+|White
+|WHITE
+
+|===
+
+Formatting codes:
+
+[width="100%",cols="^1,2,6"]
+|===
+|Code|Effect|Name
+
+|`§k`
+|Obfuscated
+|MAGIC
+
+|`§l`
+|Bold
+|BOLD
+
+|`§m`
+|Strikethrough
+|STRIKETHROUGH
+
+|`§n`
+|Underline
+|UNDERLINE
+
+|`§o`
+|Italic
+|ITALIC
+
+|`§r`
+|Reset
+|RESET
+
+|===
+
+=== When to Use Each Encoding
+
+==== Use UTF-8 (Default) When:
+
+* You don't need color codes
+* Working with international characters
+* Processing log files
+* Using modern Minecraft versions without color codes
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    // UTF-8 is default, no need to specify
+    .build();
+----
+
+==== Use ISO-8859-1 When:
+
+* You need to preserve Minecraft color codes
+* Processing chat messages with formatting
+* Parsing server responses with `§` codes
+* Working with legacy Minecraft versions
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .charset(StandardCharsets.ISO_8859_1)
+    .build();
+----
+
+=== Encoding Comparison
+
+[source,java]
+----
+String text = "§c[Server] §fWelcome!";
+
+// UTF-8 encoding
+byte[] utf8 = text.getBytes(StandardCharsets.UTF_8);
+// Result: C2 A7 63 5B 53 65 72 76 65 72 5D 20 C2 A7 66 57 65 6C 63 6F 6D 65 21
+
+// ISO-8859-1 encoding
+byte[] latin1 = text.getBytes(StandardCharsets.ISO_8859_1);
+// Result: A7 63 5B 53 65 72 76 65 72 5D 20 A7 66 57 65 6C 63 6F 6D 65 21
+
+// UTF-8 uses 2 bytes for § (C2 A7)
+// ISO-8859-1 uses 1 byte for § (A7)
+----
+
+=== Strip Color Codes
+
+If you don't need color codes, strip them for cleaner output:
+
+[source,java]
+----
+public static String stripColorCodes(String input) {
+    return input.replaceAll("§[0-9a-fk-or]", "");
+}
+
+String response = client.sendCommand("list").getResponse();
+String cleanResponse = stripColorCodes(response);
+System.out.println(cleanResponse);
+// Output: [Server] Online players: 3
+----
+
+=== Performance Notes
+
+* ISO-8859-1 is slightly faster than UTF-8 (single-byte encoding)
+* Both are hardware-accelerated on modern JVMs
+* Performance difference is negligible for typical RCON usage
+
+=== See Also
+
+* link:packet-protocol/index.html[Packet Protocol] - Binary packet structure
+* link:../guides/common-configurations/index.html[Common Configurations] - Client setup examples
+* link:../../internals/protocol-spec.html[Protocol Specification] - Complete protocol docs
