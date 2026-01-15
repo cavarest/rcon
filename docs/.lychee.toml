@@ -1,0 +1,20 @@
+include_verbatim = false
+max_redirects = 5
+timeout = 30
+max_concurrency = 10
+accept = [200, 201, 204, 206, 301, 302, 303, 304, 307, 308]
+max_retries = 3
+user_agent = "lychee/rcon-docs"
+
+exclude = [
+  "http://localhost.*",
+  "http://127\\.0\\.0\\.1.*",
+  "mailto:.*",
+  "^#.*"
+]
+
+cache = true
+no_progress = true
+insecure = false
+scheme = ["https", "http"]
+skip_missing = true

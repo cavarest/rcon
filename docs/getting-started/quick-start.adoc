@@ -1,0 +1,62 @@
+---
+title: Quick Start
+parent: Getting Started
+nav_order: 2
+---
+
+== Quick Start
+
+=== Purpose
+
+Send your first RCON command in under 5 minutes.
+
+=== Basic Usage
+
+Create an `RconClient` and send a command:
+
+[source,java]
+----
+import io.cavarest.rcon.RconClient;
+import io.cavarest.rcon.RconResponse;
+
+public class Example {
+    public static void main(String[] args) {
+        // Create the client
+        RconClient client = RconClient.builder()
+            .host("localhost")
+            .port(25575)
+            .password("your_password")
+            .build();
+
+        // Send a command
+        RconResponse response = client.sendCommand("list");
+
+        // Print the response
+        System.out.println("Response: " + response.getResponse());
+
+        // Close when done
+        client.close();
+    }
+}
+----
+
+=== Expected Output
+
+[source]
+----
+Response: There are 5 out of max 20 players online:
+Player1, Player2, Player3, Player4, Player5
+----
+
+=== What's Happening?
+
+1. **Client Creation** - The `RconClient.Builder` configures connection parameters
+2. **Authentication** - The client automatically authenticates on first use
+3. **Command Execution** - The command is sent and response is received
+4. **Multi-Packet Handling** - Large responses are automatically assembled (you don't need to do anything!)
+
+=== Next Steps
+
+* link:../getting-started/architecture.html[Architecture Overview] - Understand the layers
+* link:../guides/basic-usage/index.html[Basic Usage Guide] - Learn common patterns
+* link:../reference/index.html[API Reference] - Explore the full API

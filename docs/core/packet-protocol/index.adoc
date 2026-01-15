@@ -1,0 +1,248 @@
+---
+title: Packet Protocol
+parent: Core Concepts
+nav_order: 3
+---
+
+== Packet Protocol
+
+=== Purpose
+
+Understanding the binary packet format used by the RCON protocol for communication between client and server.
+
+=== Overview
+
+RCON uses a simple binary packet format with four fields: size, ID, type, and payload. All packets follow this structure regardless of direction (client-to-server or server-to-client).
+
+=== Packet Structure
+
+[width="100%",cols="^1,^2,4,8"]
+|===
+|Field|Size|Type|Description
+
+|Size
+|4 bytes
+|int32 (little-endian)
+|Length of ID, Type, and Payload fields combined
+
+|ID
+|4 bytes
+|int32 (little-endian)
+|Request/response identifier for matching
+
+|Type
+|4 bytes
+|int32 (little-endian)
+|Packet type (see link:#packet-types[Packet Types])
+
+|Payload
+|Variable
+|byte array
+|Actual data, null-terminated with `\0`
+
+|===
+
+[source]
+----
++-----------+-----------+-----------+-----------+
+| Size (4)  |  ID (4)   | Type (4)  | Payload   |
++-----------+-----------+-----------+-----------+
+| Little-endian integers   | Variable  |
++-----------+-----------+-----------+-----------+
+----
+
+=== Packet Types
+
+[width="100%",cols="^1,2,6"]
+|===
+|Value|Constant|Description
+
+|0
+|`SERVERDATA_AUTH_RESPONSE`
+|Authentication response from server
+
+|2
+|`SERVERDATA_EXECCOMMAND`
+|Command response from server
+
+|3
+|`SERVERDATA_AUTH`
+|Authentication request from client
+
+|===
+
+=== Size Field Calculation
+
+The Size field contains the length of everything **after** itself:
+
+[source,java]
+----
+int size = 4 (ID) + 4 (Type) + payload.length + 1 (null terminator);
+----
+
+For example, a password "secret" would have:
+- Payload: 6 bytes (`s`, `e`, `c`, `r`, `e`, `t`)
+- Null terminator: 1 byte
+- ID: 4 bytes
+- Type: 4 bytes
+- **Size = 4 + 4 + 6 + 1 = 15**
+
+=== ID Field
+
+The ID field matches requests with responses:
+
+* **Client-to-server**: Any positive integer (typically auto-incrementing)
+* **Server-to-client**: Matches the request ID, or `0` for authentication responses
+
+[source,java]
+----
+// Client generates unique ID
+int requestId = requestCounter.getAndIncrement();
+
+// Server responds with same ID
+// All response packets for this request use the same ID
+----
+
+=== Payload Encoding
+
+==== Default: UTF-8
+
+Standard text encoding for most commands:
+
+[source,java]
+----
+Charset charset = StandardCharsets.UTF_8;
+byte[] payload = command.getBytes(charset);
+----
+
+==== Color Codes: ISO-8859-1
+
+Preserve Minecraft color codes like `§c[Server]`:
+
+[source,java]
+----
+Charset charset = StandardCharsets.ISO_8859_1;
+byte[] payload = command.getBytes(charset);
+----
+
+=== Null Termination
+
+All payloads must end with a `\0` (null) byte:
+
+[source,java]
+----
+byte[] payload = command.getBytes(charset);
+byte[] terminatedPayload = new byte[payload.length + 1];
+System.arraycopy(payload, 0, terminatedPayload, 0, payload.length);
+// terminatedPayload[payload.length] is already 0
+----
+
+=== Example Packets
+
+==== Authentication Request
+
+[source]
+----
+Size: 12
+ID: 1
+Type: 3
+Payload: "secret\0"
+
+Hex (little-endian):
+0C 00 00 00  // Size = 12
+01 00 00 00  // ID = 1
+03 00 00 00  // Type = 3 (AUTH)
+73 65 63 72  65 74 00     // "secret\0"
+----
+
+==== Command Request
+
+[source]
+----
+Size: 15
+ID: 2
+Type: 3
+Payload: "list\0"
+
+Hex (little-endian):
+0F 00 00 00  // Size = 15
+02 00 00 00  // ID = 2
+03 00 00 00  // Type = 3 (AUTH)
+6C 69 73 74  00            // "list\0"
+----
+
+==== Authentication Response (Success)
+
+[source]
+----
+Size: 10
+ID: 0
+Type: 2
+Payload: "\0"
+
+Hex (little-endian):
+0A 00 00 00  // Size = 10
+00 00 00 00  // ID = 0 (auth response)
+02 00 00 00  // Type = 2 (RESPONSE)
+00                        // Empty payload (success)
+----
+
+==== Authentication Response (Failure)
+
+[source]
+----
+Size: 21
+ID: 0
+Type: 2
+Payload: "Authentication failed\0"
+
+Hex (little-endian):
+15 00 00 00  // Size = 21
+00 00 00 00  // ID = 0
+02 00 00 00  // Type = 2 (RESPONSE)
+41 75 74 68  65 6E 74 69  63 61 74 69 6F  6E 20 66 61  69 6C 65 64  00
+// "Authentication failed\0"
+----
+
+=== Size Limits
+
+[width="100%",cols="^2,^2,6"]
+|===
+|Direction|Limit|Notes
+
+|Client → Server
+|1460 bytes total
+|Typical MTU, includes headers
+
+|Server → Client
+|4104 bytes total
+|4096 bytes payload + headers
+
+|===
+
+Responses exceeding 4096 bytes are split across multiple packets. See link:fragment-resolution/index.html[Fragment Resolution] for details.
+
+=== Byte Order
+
+**Critical**: All integer fields use **little-endian** byte order, opposite of Java's default big-endian.
+
+[source,java]
+----
+// WRONG - uses big-endian
+byte[] bytes = ByteBuffer.allocate(4).putInt(value).array();
+
+// CORRECT - uses little-endian
+byte[] bytes = ByteBuffer.allocate(4)
+    .order(ByteOrder.LITTLE_ENDIAN)
+    .putInt(value)
+    .array();
+----
+
+See link:byte-order/index.html[Byte Order] for more details.
+
+=== See Also
+
+* link:fragment-resolution/index.html[Fragment Resolution] - Multi-packet responses
+* link:byte-order/index.html[Byte Order] - Little-endian encoding details
+* link:charset-handling/index.html[Charset Handling] - Text encoding options
+* link:../../internals/protocol-spec.html[Protocol Specification] - Complete protocol docs

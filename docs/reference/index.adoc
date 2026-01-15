@@ -1,0 +1,66 @@
+---
+title: API Reference
+has_children: true
+nav_order: 4
+---
+
+== API Reference
+
+=== Purpose
+
+Complete API documentation for the Rcon library.
+
+=== Main API
+
+==== RconClient
+
+The high-level API for RCON operations:
+
+* `builder()` - Create a new `RconClient.Builder`
+* `sendCommand(String)` - Send a command synchronously
+* `sendCommandAsync(String)` - Send a command asynchronously
+* `close()` - Close the connection and release resources
+
+==== RconClient.Builder
+
+Fluent builder for client configuration:
+
+* `host(String)` - Set server hostname
+* `port(int)` - Set RCON port
+* `password(String)` - Set RCON password
+* `timeout(Duration)` - Set connection timeout
+* `charset(Charset)` - Set character encoding
+* `fragmentStrategy(FragmentResolutionStrategy)` - Set fragment resolution strategy
+* `build()` - Create the configured client
+
+==== RconResponse
+
+Represents a response from the server:
+
+* `isSuccess()` - Check if the command succeeded
+* `getResponse()` - Get the response payload
+* `getRequestId()` - Get the matching request ID
+
+=== Exceptions
+
+Custom exception hierarchy for clear error handling:
+
+* `RconException` - Base exception for all Rcon errors
+* `RconAuthenticationException` - Authentication failures
+* `RconConnectionException` - Connection errors
+* `RconProtocolException` - Protocol violations
+
+=== Fragment Resolution
+
+Strategies for handling multi-packet responses:
+
+* `FragmentResolutionStrategy.ACTIVE_PROBE` - Send probe to detect end (default)
+* `FragmentResolutionStrategy.TIMEOUT` - Wait fixed duration after last packet
+
+=== Javadoc
+
+For complete API documentation, see the link:https://javadoc.io/doc/io.cavarest/rcon/[Javadoc].
+
+=== Source Code
+
+Browse the source code on link:https://github.com/cavarest/rcon[GitHub].

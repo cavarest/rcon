@@ -1,0 +1,183 @@
+---
+title: Thread Safety Model
+parent: Core Concepts
+nav_order: 2
+---
+
+== Thread Safety Model
+
+=== Purpose
+
+Understanding how Rcon handles concurrent command execution safely.
+
+=== Overview
+
+Rcon is designed for thread-safe concurrent access. Multiple threads can send commands simultaneously without interfering with each other's responses.
+
+=== Thread Safety Guarantees
+
+==== Synchronized Methods
+
+The core `Rcon.writeAndRead()` and `Rcon.read()` methods are **synchronized**, ensuring that:
+
+. Only one thread can write/read at a time
+. Request and response IDs always match correctly
+. Responses are never delivered to the wrong thread
+
+[source,java]
+----
+public class Rcon {
+    public synchronized RconResponse writeAndRead(Packet request) {
+        // Thread-safe request/response cycle
+        int requestId = requestCounter.getAndIncrement();
+        // ... send and receive logic ...
+        return response;
+    }
+}
+----
+
+==== Lock-Free Request IDs
+
+The `requestCounter` uses `AtomicInteger`, providing thread-safe incrementation without synchronization overhead:
+
+[source,java]
+----
+private final AtomicInteger requestCounter = new AtomicInteger(0);
+
+// Multiple threads can safely get unique IDs
+int id1 = requestCounter.getAndIncrement(); // Thread A
+int id2 = requestCounter.getAndIncrement(); // Thread B
+int id3 = requestCounter.getAndIncrement(); // Thread C
+// All IDs are guaranteed to be unique
+----
+
+=== Concurrent Usage Example
+
+Multiple threads can safely share a single `RconClient`:
+
+[source,java]
+----
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .build();
+
+// Thread 1
+Thread thread1 = new Thread(() -> {
+    RconResponse r1 = client.sendCommand("list");
+    System.out.println("Thread 1: " + r1.getResponse());
+});
+
+// Thread 2
+Thread thread2 = new Thread(() -> {
+    RconResponse r2 = client.sendCommand("seed");
+    System.out.println("Thread 2: " + r2.getResponse());
+});
+
+// Thread 3
+Thread thread3 = new Thread(() -> {
+    RconResponse r3 = client.sendCommand("difficulty");
+    System.out.println("Thread 3: " + r3.getResponse());
+});
+
+// Start all threads
+thread1.start();
+thread2.start();
+thread3.start();
+
+// Wait for completion
+thread1.join();
+thread2.join();
+thread3.join();
+
+client.close();
+----
+
+=== Request/Response Matching
+
+Each thread gets its own response matching its request:
+
+[source]
+----
+Thread A sends request ID=5 → receives response ID=5
+Thread B sends request ID=6 → receives response ID=6
+Thread C sends request ID=7 → receives response ID=7
+
+The synchronization ensures no mixing of responses.
+----
+
+=== Connection-Level Safety
+
+While methods are synchronized, they share a single TCP connection. This means:
+
+* **Commands are serialized** - Only one command at a time over the wire
+* **Fair ordering** - Threads are served in arrival order at the synchronized block
+* **No response mixing** - Each thread waits for its specific response
+
+=== High-Throughput Scenarios
+
+For applications requiring high concurrency, consider:
+
+==== Connection Pooling
+
+Create multiple client instances:
+
+[source,java]
+----
+List<RconClient> pool = new ArrayList<>();
+for (int i = 0; i < 5; i++) {
+    pool.add(RconClient.builder()
+        .host("localhost")
+        .port(25575)
+        .password("password")
+        .build());
+}
+
+// Distribute load across connections
+// (See Common Configurations for full example)
+----
+
+==== Async API
+
+Use the asynchronous API to avoid blocking threads:
+
+[source,java]
+----
+CompletableFuture<RconResponse> future1 = client.sendCommandAsync("list");
+CompletableFuture<RconResponse> future2 = client.sendCommandAsync("seed");
+
+// Both commands execute without blocking the calling thread
+future1.thenAccept(r -> System.out.println(r.getResponse()));
+future2.thenAccept(r -> System.out.println(r.getResponse()));
+----
+
+=== CS:GO Quirk Handling
+
+Some game servers (notably CS:GO) send an empty response immediately before authentication. Rcon handles this transparently:
+
+[source,java]
+----
+// In Rcon.authenticate():
+// If server sends empty response before auth response,
+// silently consume it and continue waiting for auth response
+----
+
+This quirk handling is also thread-safe due to the synchronized methods.
+
+=== Thread Safety Summary
+
+| Component | Thread-Safe | Mechanism |
+|-----------|--------------|------------|
+| `Rcon.writeAndRead()` | Yes | `synchronized` |
+| `Rcon.read()` | Yes | `synchronized` |
+| `requestCounter` | Yes | `AtomicInteger` |
+| `RconClient.sendCommand()` | Yes | Delegates to synchronized methods |
+| `Packet` | Yes | Immutable |
+| `PacketCodec` | Yes | Stateless |
+
+=== See Also
+
+* link:fragment-resolution/index.html[Fragment Resolution] - Multi-packet handling
+* link:../guides/advanced/index.html[Advanced Topics] - High-throughput patterns
+* link:../../internals/implementation-notes.html[Implementation Notes] - Development guidance

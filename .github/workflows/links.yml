@@ -1,0 +1,50 @@
+name: links
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  link_checker:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: docs
+
+      - name: Build site
+        env:
+          JEKYLL_ENV: production
+        run: bundle exec jekyll build --trace
+        working-directory: docs
+
+      - name: Link Checker (Built Site)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --verbose
+            --no-progress
+            --config docs/.lychee.toml
+            --root-dir "$(pwd)/docs/_site"
+            --base-url file://${{ github.workspace }}/docs/_site
+            'docs/_site/**/*.html'
+          fail: true
+
+      - name: Comment PR on failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ Link checking failed. Please check the workflow logs for details.'
+            })

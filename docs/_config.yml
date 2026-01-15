@@ -1,0 +1,40 @@
+title: "Rcon documentation"
+description: A robust RCON protocol library for Minecraft servers written in pure Java.
+url: https://cavarest.github.io
+baseurl: /rcon
+
+theme: just-the-docs
+remote_theme: just-the-docs/just-the-docs
+
+# AsciiDoc support
+asciidoc: {}
+asciidoctor:
+  attributes:
+    - idprefix=_
+    - source-highlighter=rouge
+    - icons=font
+    - experimental=''
+
+plugins:
+  - jekyll-asciidoc
+  - jekyll-seo-tag
+
+# Search configuration
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 3
+  button: true
+
+# Navigation
+nav_sort: case_insensitive
+
+# Logo
+logo: "/assets/logo.svg"
+
+# Aux links
+aux_links:
+  "Rcon on GitHub":
+    - "https://github.com/cavarest/rcon"
+  "Report Issue":
+    - "https://github.com/cavarest/rcon/issues"

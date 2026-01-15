@@ -1,0 +1,51 @@
+---
+title: Installation
+parent: Getting Started
+nav_order: 1
+---
+
+== Installation
+
+=== Purpose
+
+Add Rcon to your Java project using your preferred build system.
+
+=== Maven
+
+Add the dependency to your `pom.xml`:
+
+[source,xml]
+----
+<dependency>
+    <groupId>io.cavarest</groupId>
+    <artifactId>rcon</artifactId>
+    <version>0.2.1</version>
+</dependency>
+----
+
+=== Gradle
+
+Add the dependency to your `build.gradle`:
+
+[source,gradle]
+----
+implementation 'io.cavarest:rcon:0.2.1'
+----
+
+=== Gradle (Kotlin DSL)
+
+Add the dependency to your `build.gradle.kts`:
+
+[source,kotlin]
+----
+implementation("io.cavarest:rcon:0.2.1")
+----
+
+=== Requirements
+
+* Java 11 or higher
+* No additional dependencies required
+
+=== Version Check
+
+To verify the installation, you can check the latest release on link:https://github.com/cavarest/rcon/releases[GitHub].

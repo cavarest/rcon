@@ -1,0 +1,151 @@
+---
+title: Fragment Resolution
+parent: Core Concepts
+has_children: true
+nav_order: 1
+---
+
+== Fragment Resolution
+
+=== Purpose
+
+Understanding how Rcon handles multi-packet responses when server output exceeds the 4096-byte packet size limit.
+
+=== The Problem
+
+Minecraft RCON protocol limits server responses to 4096 bytes per packet. When a command produces more output (like listing 512 entities on a server), the response is split across multiple packets.
+
+For example, a large response might look like:
+
+[source]
+----
+Packet 1: "There are 512 out of max 20 player..."
+Packet 2: "Entity 1: Zombie at 123.5, 64.0, 2"
+Packet 3: "Entity 2: Skeleton at 128.1, 64.0, -5"
+...
+Packet 22: "Entity 512: Enderman at 456.7, 72.0, 123"
+----
+
+=== The Solution
+
+Rcon provides two strategies to detect when all packets have been received:
+
+==== ACTIVE_PROBE Strategy (Default)
+
+After receiving the last packet, Rcon sends an empty command probe. The server's response to this probe signals that the previous response is complete.
+
+[source]
+----
+Client: SEND "list" (ID=1)
+Server: RESPONSE (ID=1, Packet 1)
+Server: RESPONSE (ID=1, Packet 2)
+Server: END (ID=1, Packet 3)
+
+Client: SEND "" (ID=2, probe)
+Server: RESPONSE (ID=2, "")
+
+Client: Assemble Packets 1-3 into complete response
+----
+
+*Advantages*:
+- **Explicit detection** - No guessing when response is complete
+- **Minimal latency** - Only one extra round-trip
+- **High reliability** - Works with all server implementations
+
+*Use Cases*:
+- Most production scenarios (recommended default)
+- When response latency is critical
+- With servers that handle empty commands properly
+
+==== TIMEOUT Strategy
+
+After receiving the last packet, Rcon waits a fixed duration (default: 100ms). If no additional packets arrive within this window, the response is considered complete.
+
+[source]
+----
+Client: SEND "list" (ID=1)
+Server: RESPONSE (ID=1, Packet 1)
+Server: RESPONSE (ID=1, Packet 2)
+Server: END (ID=1, Packet 3)
+
+[Wait 100ms]
+
+Client: Assemble Packets 1-3 into complete response
+----
+
+*Advantages*:
+- **Simpler** - No extra probe command needed
+- **Works with problematic servers** - When empty commands cause issues
+
+*Disadvantages*:
+- **Added latency** - Must wait full timeout duration on every command
+- **Less reliable** - May cut off responses if timeout is too short
+
+*Use Cases*:
+- When server has issues with empty probe commands
+- When extra round-trip latency is acceptable
+- Testing/debugging scenarios
+
+=== Configuration
+
+Select the fragment resolution strategy when building the client:
+
+[source,java]
+----
+// Use ACTIVE_PROBE (default)
+RconClient client = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .fragmentStrategy(FragmentResolutionStrategy.ACTIVE_PROBE)
+    .build();
+
+// Use TIMEOUT with custom duration
+RconClient timeoutClient = RconClient.builder()
+    .host("localhost")
+    .port(25575)
+    .password("password")
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .timeout(Duration.ofMillis(200))  // Custom timeout
+    .build();
+----
+
+=== Automatic Assembly
+
+Both strategies handle multi-packet responses **automatically**. You don't need to write any special code:
+
+[source,java]
+----
+// This works for responses of ANY size
+RconResponse response = client.sendCommand("list");
+
+// Even if the response is 87,000 bytes across 22 packets,
+// the complete assembled response is available here
+String completeResponse = response.getResponse();
+----
+
+=== Packet Assembly Process
+
+Behind the scenes, Rcon:
+
+. Sends the command with a unique request ID
+. Receives all packets matching that request ID
+. Orders packets by their sequence
+. Concatenates payloads into complete response
+. Signals completion using the chosen strategy
+
+All of this happens transparently - you simply call `sendCommand()` and get the complete response.
+
+=== Verified Scale
+
+The ACTIVE_PROBE strategy has been tested and verified with:
+
+* **Single packet responses** - < 4096 bytes
+* **Large responses** - Up to 87,000 bytes across ~22 packets
+* **Concurrent commands** - Multiple threads sending commands simultaneously
+
+=== See Also
+
+* link:../thread-safety/index.html[Thread Safety Model] - How concurrent requests are handled
+* link:../packet-protocol/index.html[Packet Protocol] - Binary packet structure
+* link:../../internals/fragment-algorithms.html[Fragment Algorithms] - Implementation details

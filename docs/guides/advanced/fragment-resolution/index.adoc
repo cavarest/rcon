@@ -1,0 +1,261 @@
+---
+title: Fragment Resolution Deep Dive
+parent: Advanced Topics
+nav_order: 1
+---
+
+== Fragment Resolution Deep Dive
+
+=== Purpose
+
+Advanced understanding of multi-packet response handling in Rcon.
+
+=== Overview
+
+This page provides deeper technical details on fragment resolution beyond the basic link:../../core/fragment-resolution/index.html[Fragment Resolution] documentation.
+
+=== Protocol Limitation
+
+The RCON protocol has a fundamental limitation: server responses are limited to 4096 bytes per packet. When a command produces more output, the server splits the response across multiple packets.
+
+**Critical**: The protocol provides **no explicit marker** for the last packet. The client must use heuristics to detect completion.
+
+=== Detection Challenge
+
+Consider this scenario:
+
+[source]
+----
+Client sends: "list" with ID=1
+Server responds with 22 packets, all with ID=1:
+  Packet 1: "There are 512 out of max 20 players..."
+  Packet 2: "Entity 1: Zombie at 123.5, 64.0, 2..."
+  Packet 3: "Entity 2: Skeleton at 128.1, 64.0, -5..."
+  ...
+  Packet 22: "Entity 512: Enderman at 456.7, 72.0, 123"
+
+Question: After receiving Packet 22, how does the client know
+         no more packets are coming?
+----
+
+=== Strategy Comparison
+
+==== ACTIVE_PROBE: Timeline
+
+[source]
+----
+T0: Client sends "list" (ID=1)
+T1: Client receives Packet 1 (ID=1)
+T2: Client receives Packet 2 (ID=1)
+T3: Client receives Packet 3 (ID=1)
+...
+T22: Client receives Packet 22 (ID=1)
+T23: No immediate packet, client suspects end
+T24: Client sends "" probe (ID=2)
+T25: Client receives probe response (ID=2)
+T26: Client confirms response complete, assembles 22 packets
+
+Total time: ~26 round-trips
+Added latency: 1 round-trip (probe)
+----
+
+==== TIMEOUT: Timeline
+
+[source]
+----
+T0: Client sends "list" (ID=1)
+T1: Client receives Packet 1 (ID=1)
+T2: Client receives Packet 2 (ID=1)
+T3: Client receives Packet 3 (ID=1)
+...
+T22: Client receives Packet 22 (ID=1)
+T23: No immediate packet, client suspects end
+T24-T123: Client waits 100ms timeout
+T124: Timeout expires, client confirms complete
+
+Total time: ~22 round-trips + 100ms wait
+Added latency: 100ms (always)
+----
+
+=== Latency Analysis
+
+Assuming 1ms round-trip:
+
+[width="100%",cols="^2,^2,^2,6"]
+|===
+|Response Size|Packets|ACTIVE_PROBE|TIMEOUT (100ms)
+
+|Small (1KB)
+|1
+|2ms (1 + probe)
+|101ms (1 + timeout)
+
+|Medium (8KB)
+|2
+|3ms (2 + probe)
+|102ms (2 + timeout)
+
+|Large (87KB)
+|22
+|23ms (22 + probe)
+|122ms (22 + timeout)
+
+|===
+
+ACTIVE_PROBE is **4-5x faster** for small responses and **still faster** for large responses.
+
+=== Network Conditions
+
+==== High Latency Network
+
+Round-trip = 100ms:
+
+[width="100%",cols="^2,^2,6"]
+|===
+|Strategy|Small Response|Large Response
+
+|ACTIVE_PROBE
+|200ms (100 + 100)
+|2,300ms (2,200 + 100)
+
+|TIMEOUT
+|200ms (100 + 100)
+|2,300ms (2,200 + 100)
+
+|===
+
+TIMEOUT becomes competitive on high-latency networks because the timeout overhead is negligible compared to network latency.
+
+==== Low Latency Network
+
+Round-trip = 0.1ms:
+
+[width="100%",cols="^2,^2,6"]
+|===
+|Strategy|Small Response|Large Response
+
+|ACTIVE_PROBE
+|0.2ms (0.1 + 0.1)
+|2.3ms (2.2 + 0.1)
+
+|TIMEOUT
+|100.1ms (0.1 + 100)
+|102.2ms (2.2 + 100)
+
+|===
+
+ACTIVE_PROBE is **500x faster** for small responses on low-latency networks.
+
+=== Implementation Details
+
+==== Probe Command
+
+The probe is an empty command:
+
+[source,java]
+----
+Packet probe = new Packet(
+    requestCounter.getAndIncrement(),
+    PacketType.COMMAND,
+    new byte[0]  // Empty payload
+);
+----
+
+Most servers respond to empty commands with an empty response. This is the key insight that makes ACTIVE_PROBE work.
+
+==== Race Condition Prevention
+
+[source,java]
+----
+// WRONG - Race condition!
+if (channel.read(buffer) == 0) {
+    // No data available, send probe
+    sendProbe();
+    // But data might arrive NOW and be lost!
+}
+
+// CORRECT - Synchronized
+synchronized (this) {
+    if (noDataAvailable()) {
+        sendProbe();
+        readProbeResponse();
+    }
+}
+----
+
+The synchronized block prevents concurrent access during the probe.
+
+=== Custom Timeout Values
+
+For TIMEOUT strategy, tune based on your network:
+
+[source,java]
+----
+// Fast local network (1ms RTT)
+RconClient client = RconClient.builder()
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .timeout(Duration.ofMillis(50))  // 50x RTT
+    .build();
+
+// Internet (100ms RTT)
+RconClient client = RconClient.builder()
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .timeout(Duration.ofMillis(500))  // 5x RTT
+    .build();
+
+// Unreliable network
+RconClient client = RconClient.builder()
+    .fragmentStrategy(FragmentResolutionStrategy.TIMEOUT)
+    .timeout(Duration.ofMillis(1000))  // 10x RTT
+    .build();
+----
+
+=== Testing Multi-Packet
+
+Test with various response sizes:
+
+[source,java]
+----
+// Small response (single packet)
+@Test
+public void testSmallResponse() {
+    RconResponse response = client.sendCommand("seed");
+    assertTrue(response.getResponse().length() < 4096);
+}
+
+// Medium response (2-3 packets)
+@Test
+public void testMediumResponse() {
+    RconResponse response = client.sendCommand("help");
+    assertTrue(response.getResponse().length() > 4096);
+}
+
+// Large response (22+ packets)
+@Test
+public void testLargeResponse() {
+    RconResponse response = client.sendCommand("list");
+    assertTrue(response.getResponse().length() > 80000);
+}
+----
+
+=== Performance Profiling
+
+Profile fragment resolution performance:
+
+[source,java]
+----
+long start = System.nanoTime();
+RconResponse response = client.sendCommand("list");
+long elapsed = System.nanoTime() - start;
+
+System.out.printf(
+    "Received %d bytes in %.2f ms%n",
+    response.getResponse().length(),
+    elapsed / 1_000_000.0
+);
+----
+
+=== See Also
+
+* link:../../core/fragment-resolution/index.html[Fragment Resolution] - User documentation
+* link:../performance-tuning/index.html[Performance Tuning] - Optimization guide
