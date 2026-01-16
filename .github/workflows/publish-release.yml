@@ -44,7 +44,7 @@ jobs:
       - name: Configure Git
         if: github.event_name == 'workflow_dispatch'
         run: |
-          git config --global user.email "no-reply@github-action.de"
+          git config --global user.email "11865+ronaldtse@users.noreply.github.com"
           git config --global user.name "GitHub Action"
 
       - name: Prepare release
@@ -84,5 +84,3 @@ jobs:
         with:
           files: build/libs/cavarest-rcon-${{ steps.version.outputs.version }}.jar
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

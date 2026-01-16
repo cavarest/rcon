@@ -10,13 +10,23 @@ permissions:
 jobs:
   dependency-submission:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout sources
       uses: actions/checkout@v6
+
     - name: Setup Java
       uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: 17
+
     - name: Generate and submit dependency graph
       uses: gradle/actions/dependency-submission@v5
+
+    - name: Upload dependency graph
+      uses: actions/upload-artifact@v6
+      with:
+        name: dependency-graph
+        path: build/dependency-graph/
+        retention-days: 30
