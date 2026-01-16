@@ -10,7 +10,10 @@ exclude = [
   "http://localhost.*",
   "http://127\\.0\\.0\\.1.*",
   "mailto:.*",
-  "^#.*"
+  "^#.*",
+  "^https://cavarest\\.github\\.io/rcon",
+  "^https://github\\.com/cavarest/rcon",
+  "^https://javadoc\\.io/doc/io\\.cavarest/rcon"
 ]
 
 cache = true
