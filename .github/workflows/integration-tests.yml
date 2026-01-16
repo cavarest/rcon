@@ -3,27 +3,17 @@ name: Integration Tests
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'build.gradle'
-      - '.github/workflows/integration-tests.yml'
   pull_request:
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'build.gradle'
-      - '.github/workflows/integration-tests.yml'
   workflow_dispatch:
+
+permissions:
+  checks: write
+  contents: read
+  packages: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
-
-    permissions:
-      checks: write
-      contents: read
-      packages: read
 
     services:
       minecraft:
