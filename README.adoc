@@ -3,8 +3,8 @@
 image:https://img.shields.io/badge/Java-11%2B-blue[Java Version]
 image:https://img.shields.io/badge/Gradle-8.5-green[Gradle Version]
 image:https://img.shields.io/badge/License-MIT-yellow[License]
-image:https://github.com/cavarest/rcon/actions/workflows/unit-tests.yml/badge.svg["Unit Tests", link="https://github.com/cavarest/pilaf/actions/workflows/unit-tests.yml"]
-image:https://github.com/cavarest/rcon/actions/workflows/integration-tests.yml/badge.svg["Integration Tests", link="https://github.com/cavarest/pilaf/actions/workflows/integration-tests.yml"]
+image:https://github.com/cavarest/rcon/actions/workflows/unit-tests.yml/badge.svg["Unit Tests", link="https://github.com/cavarest/rcon/actions/workflows/unit-tests.yml"]
+image:https://github.com/cavarest/rcon/actions/workflows/integration-tests.yml/badge.svg["Integration Tests", link="https://github.com/cavarest/rcon/actions/workflows/integration-tests.yml"]
 
 image:https://img.shields.io/badge/Website-RCON_documentation-blue.svg["Documentation site", link="https://cavarest.github.io/rcon"]
 
